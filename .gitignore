@@ -1,0 +1,58 @@
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+
+*.ipynb
+
+# Virtual Environment (jika ada)
+.venv/
+venv/
+env/
+
+sample-pretrain/
+
+# Datasets (File biner besar tidak cocok di-commit ke Git)
+data/*.npz
+data/*.npy
+data/*.csv
+
+# Experiment Outputs, Logs, & Model Checkpoints
+exp-*/
+logs/
+*.pth
+*.pt
+*.onnx
+*.ckpt
+
+# OS & Editor Files
+.DS_Store
+.vscode/
+.idea/
+
+# Custom Wheels
+# Biarkan baris di bawah ini DI-KOMENTARI jika ukuran .whl di folder wheels/ < 100 MB 
+# dan ingin kamu push ke GitHub agar bisa langsung di-install di Cloud GPU.
+# Hapus tanda '#' jika .whl tidak ingin dimasukkan ke repo:
+wheels/*.whl
+wheels/
+data/
+
+MDs/
+
+logs-vastai/
+
+credentials.json
+
+inference/
+
+helper.txt
+
+test-set-*/
+
+val-set-*/
+
+exp_augmentasi.py
