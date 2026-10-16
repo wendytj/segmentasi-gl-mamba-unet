@@ -1,0 +1,21 @@
+{
+  "name": "Mamba Container",
+  "image": "mamba-ready-for-myself:v1",
+  "runArgs": [
+    "--gpus=all",
+    "--ipc=host",
+    "--shm-size=8g"
+  ],
+  "workspaceFolder": "/workspaces/segmentasi-gl-mamba-unet",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/conda/bin/python"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ]
+    }
+  }
+}
