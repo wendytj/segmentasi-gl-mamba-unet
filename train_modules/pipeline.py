@@ -601,6 +601,44 @@ def evaluate_best_checkpoints(
     )
 
 
+def register_nan_hooks(model):
+    """Memasang forward hook khusus pada leaf modules untuk mendeteksi layer pertama pemicu NaN."""
+    nan_detected = [
+        False
+    ]  # Flag mutable untuk mengunci log setelah NaN pertama ditemukan
+
+    def nan_hook(module, input, output):
+        if nan_detected[0]:
+            return
+
+        # Ambil tensor dari output (baik berbentuk Tensor, Tuple, maupun List)
+        outputs = (
+            [output]
+            if isinstance(output, torch.Tensor)
+            else (output if isinstance(output, (tuple, list)) else [])
+        )
+
+        for out in outputs:
+            if isinstance(out, torch.Tensor) and torch.isnan(out).any():
+                nan_detected[0] = True
+                print(
+                    "\n💥 [NaN DETECTED AT LAYER LEVEL]"
+                    f"\n ├─ Layer Pemicu : {module.__class__.__name__}"
+                    f" ({module._get_name()})"
+                    f"\n └─ Shape Output : {out.shape}"
+                )
+                break
+
+    handles = []
+    for name, module in model.named_modules():
+        # Hanya pasang pada leaf modules (layer atomik paling bawah) agar presisi
+        if len(list(module.children())) == 0:
+            handles.append(module.register_forward_hook(nan_hook))
+
+    print(f"🛡️ [NaN Guard] Forward hooks aktif pada {len(handles)} leaf-modules.")
+    return handles
+
+
 def run_training_pipeline(
     model,
     raw_model,
@@ -685,6 +723,7 @@ def run_training_pipeline(
         logger.load_history_from_csv()
         print(f"✅ Auto-resume sukses! Melanjutkan dari Epoch {start_epoch}")
 
+    nan_hook_handles = register_nan_hooks(raw_model)
     # 5. Training Loop Utama
     try:
         print(
@@ -852,6 +891,10 @@ def run_training_pipeline(
         logger.export_csv()
         logger.plot_learning_curves()
         raise e
+    finally:
+        for handle in nan_hook_handles:
+            handle.remove()
+        print("🧹 [NaN Guard] Forward hooks berhasil dibersihkan.")
 
     gc.collect()
     torch.cuda.empty_cache()
