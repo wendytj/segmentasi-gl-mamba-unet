@@ -708,13 +708,14 @@ def run_training_pipeline(
 
         # 🌟 SAFE LOAD OPTIMIZER (Mencegah KeyError jika restored dari Best Model)
         if "optimizer_state" in checkpoint and checkpoint["optimizer_state"]:
-            optimizer.load_state_dict(checkpoint["optimizer_state"])
-            print("  ├─ Optimizer state berhasil dimuat.")
-        else:
-            print(
-                "  ├─ Optimizer state tidak ditemukan / di-reset (Fresh"
-                " start optimizer)."
-            )
+            try:
+                optimizer.load_state_dict(checkpoint["optimizer_state"])
+                print("  ├─ Optimizer state berhasil dimuat.")
+            except Exception as opt_err:
+                print(
+                    "  ├─ ⚠️ Optimizer state di-reset (Perubahan struktur"
+                    f" parameter): {opt_err}"
+                )
 
         if "scheduler_state" in checkpoint and checkpoint["scheduler_state"]:
             scheduler.load_state_dict(checkpoint["scheduler_state"])
@@ -733,6 +734,18 @@ def run_training_pipeline(
 
         logger.load_history_from_csv()
         print(f"✅ Auto-resume sukses! Melanjutkan dari Epoch {start_epoch}")
+
+    target_base_lr = 0.001
+    lr_ratios = [1.0, 0.1, 0.02]  # Ratio per group: [Scratch, DWT Linear, DWT Conv]
+
+    for group, ratio in zip(optimizer.param_groups, lr_ratios):
+        group["lr"] = target_base_lr * ratio
+
+    scheduler.last_epoch = start_epoch - 1
+    print(
+        f"⚡ [Hardcoded LR Applied] Base LR dipaksa melompat ke {target_base_lr}"
+        f" (Scheduler Last Epoch: {scheduler.last_epoch})"
+    )
 
     nan_hook_handles = register_nan_hooks(raw_model)
     # 5. Training Loop Utama
