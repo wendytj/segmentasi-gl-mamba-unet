@@ -114,7 +114,7 @@ def compute_class_weights(
 
 
 def _align_shapes(logits: torch.Tensor, targets: torch.Tensor):
-    """Helper privat untuk memastikan logits dan targets memiliki shape [B, C, H, W] dan tipe float."""
+    """Helper privat untuk memastikan logits dan targets memiliki shape [B, C, H, W] dan tipe float32."""
     if targets.ndim == 4 and targets.shape[-1] == logits.shape[1]:
         targets = targets.permute(0, 3, 1, 2)
     elif targets.ndim == 3:
@@ -125,8 +125,8 @@ def _align_shapes(logits: torch.Tensor, targets: torch.Tensor):
         if targets.shape[1] > C:
             targets = targets[:, :C, :, :]
 
-    # 🌟 Paksa konversi ke float32 agar aman dari error cast Long/Float di BCE
-    return logits, targets.float()
+    # 🌟 PAKSA KEDUA TENSOR KE FLOAT32 (Mencegah NaN saat akumulasi spasial di Mixed Precision)
+    return logits.float(), targets.float()
 
 
 class DiceLoss(nn.Module):

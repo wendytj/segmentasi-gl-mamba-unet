@@ -1,14 +1,11 @@
-import numpy as np
 import gc
+import numpy as np
 import torch
 from tqdm import tqdm
 
 
 def compute_quick_batch_dsc(preds, masks, num_classes=2):
-    """Kalkulasi cepat Mean DSC khusus 2 kanal biner (Kanal 0: Ischemia, Kanal 1: Bleeding)
-
-    untuk monitoring progress bar tqdm per batch.
-    """
+    """Kalkulasi cepat Mean DSC khusus 2 kanal biner untuk progress bar tqdm per batch."""
     dscs = []
     for c in range(num_classes):
         pred_c = preds[:, c] == 1 if preds.ndim == 4 else preds == c
@@ -38,54 +35,46 @@ def train_one_epoch(
     model.train()
     running_loss = 0.0
     running_dsc = 0.0
-    total_batches = 0
+    total_samples = 0
 
     optimizer.zero_grad(set_to_none=True)
     pbar = tqdm(dataloader, desc="Training", leave=False)
 
-    trainable_params = [p for group in optimizer.param_groups for p in group["params"]]
+    # Filter hanya parameter aktif yang membutuhkan gradien
+    trainable_params = [
+        p
+        for group in optimizer.param_groups
+        for p in group["params"]
+        if p.requires_grad
+    ]
 
     for i, batch in enumerate(pbar):
-        # ======================================================================
-        # 1. ROBUST ITERATIVE BATCH UNPACKING (Auto-detect DTM & Labels)
-        # ======================================================================
-        images, masks, dtms, labels = None, None, None, None
+        # 1. ROBUST BATCH UNPACKING
+        images, masks, dtms = None, None, None
 
         if isinstance(batch, (tuple, list)):
-            images = batch[0]
-            masks = batch[1]
-
-            # Pindai seluruh elemen sisa (batch[2:]) untuk mencari DTM & Labels
+            images, masks = batch[0], batch[1]
             for elem in batch[2:]:
-                if isinstance(elem, torch.Tensor):
-                    if elem.ndim >= 3:  # DTM Map berdimensi 3D/4D [B, C, H, W]
-                        dtms = elem
-                    elif elem.ndim <= 2:  # Classification Label [B] atau [B, 1]
-                        labels = elem
-
+                if isinstance(elem, torch.Tensor) and elem.ndim >= 3:
+                    dtms = elem
         elif isinstance(batch, dict):
             images = batch.get("image", batch.get("images"))
             masks = batch.get("mask", batch.get("masks"))
-            dtms = batch.get("dtm", batch.get("dtms"), None)  # type: ignore
-            labels = batch.get("label", batch.get("labels"), None)  # type: ignore
+            dtms = batch.get("dtm", batch.get("dtms"), None) # type: ignore
         else:
             raise TypeError(f"🚨 Tipe batch tidak dikenali: {type(batch)}")
 
-        images = images.to(device, non_blocking=True)  # type: ignore
-        masks = masks.to(device, non_blocking=True).float()  # type: ignore # [B, 2, H, W]
-
+        images = images.to(device, non_blocking=True) # type: ignore
+        masks = masks.to(device, non_blocking=True).float() # type: ignore
         if dtms is not None:
-            dtms = dtms.to(device, non_blocking=True).float()  # [B, 2, H, W]
+            dtms = dtms.to(device, non_blocking=True).float()
 
-        # Ensure correct channel-first format [B, C, H, W]
         if masks.ndim == 4 and masks.shape[-1] == 2:
             masks = masks.permute(0, 3, 1, 2)
         if dtms is not None and dtms.ndim == 4 and dtms.shape[-1] == 2:
             dtms = dtms.permute(0, 3, 1, 2)
 
-        # ======================================================================
         # 2. SYNCHRONOUS GPU AUGMENTATION
-        # ======================================================================
         with torch.no_grad():
             if gpu_transform is not None:
                 trans_out = (
@@ -94,41 +83,31 @@ def train_one_epoch(
                     else gpu_transform(images, masks)
                 )
                 if isinstance(trans_out, (tuple, list)):
+                    images, masks = trans_out[0], trans_out[1]
                     if len(trans_out) >= 3:
-                        images, masks, dtms = trans_out[:3]
-                    elif len(trans_out) == 2:
-                        images, masks = trans_out
+                        dtms = trans_out[2]
                 else:
                     images = trans_out
 
-        # ======================================================================
-        # 3. FORWARD PASS & LOSS CALCULATION WITH EXPLICIT DTM PASSING
-        # ======================================================================
+        # 3. FORWARD PASS & LOSS CALCULATION
         with torch.autocast(device_type="cuda", dtype=amp_dtype):
-            outputs = model(images)  # Shape: [B, 2, H, W]
-
-            if dtms is not None:
-                try:
-                    loss = criterion(outputs, masks, dtm_targets=dtms)
-                except TypeError:
-                    try:
-                        loss = criterion(outputs, masks, dtms)
-                    except TypeError:
-                        loss = criterion(outputs, masks)
-            else:
-                loss = criterion(outputs, masks)
-
+            outputs = model(images)
+            loss = (
+                criterion(outputs, masks, dtm_targets=dtms)
+                if dtms is not None
+                else criterion(outputs, masks)
+            )
             loss_scaled = loss / accumulation_steps
 
-        # 4. Backward Pass
-        if use_bf16:
+        # 4. BACKWARD PASS
+        if use_bf16 or scaler is None:
             loss_scaled.backward()
         else:
             scaler.scale(loss_scaled).backward()
 
-        # 5. Gradient Accumulation & Step
+        # 5. GRADIENT ACCUMULATION & STEP
         if (i + 1) % accumulation_steps == 0 or (i + 1) == len(dataloader):
-            if use_bf16:
+            if use_bf16 or scaler is None:
                 torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
                 optimizer.step()
 
@@ -150,32 +129,38 @@ def train_one_epoch(
 
             optimizer.zero_grad(set_to_none=True)
 
-        # 6. Batch Statistics Logging
+        # 6. BATCH LOGGING (Konversi FP32 untuk presisi probabilitas)
         batch_size = images.size(0)
         running_loss += loss.item() * batch_size
 
         with torch.no_grad():
-            probs = torch.sigmoid(outputs.detach())
-            preds = (probs > 0.5).to(torch.uint8)  # Shape: [B, 2, H, W]
+            probs = torch.sigmoid(outputs.detach().float())
+            preds = (probs > 0.5).to(torch.uint8)
             batch_dsc = compute_quick_batch_dsc(preds, masks)
 
         running_dsc += batch_dsc * batch_size
-        total_batches += batch_size
+        total_samples += batch_size
 
         if i % 10 == 0:
             pbar.set_postfix(
                 {
-                    "loss": f"{(running_loss / total_batches):.4f}",
-                    "dsc": f"{(running_dsc / total_batches):.4f}",
+                    "loss": f"{(running_loss / total_samples):.4f}",
+                    "dsc": f"{(running_dsc / total_samples):.4f}",
                 }
             )
 
-    epoch_loss = running_loss / total_batches
-    epoch_dsc = running_dsc / total_batches
-    return epoch_loss, epoch_dsc
+    return running_loss / total_samples, running_dsc / total_samples
 
 
-def evaluate(model, dataloader, criterion, device, gpu_transform, desc="Validation"):
+def evaluate(
+    model,
+    dataloader,
+    criterion,
+    device,
+    gpu_transform,
+    amp_dtype=torch.bfloat16,
+    desc="Validation",
+):
     model.eval()
     running_loss = 0.0
     total_samples = 0
@@ -184,36 +169,26 @@ def evaluate(model, dataloader, criterion, device, gpu_transform, desc="Validati
     all_pred_masks = []
     all_pred_probs = []
 
-    use_bf16 = torch.cuda.is_bf16_supported()
-    amp_dtype = torch.bfloat16 if use_bf16 else torch.float16
-
     pbar = tqdm(dataloader, desc=desc, leave=False)
 
     with torch.no_grad():
         for i, batch in enumerate(pbar):
-            images, masks, dtms, labels = None, None, None, None
+            images, masks, dtms = None, None, None
 
             if isinstance(batch, (tuple, list)):
-                images = batch[0]
-                masks = batch[1]
-
+                images, masks = batch[0], batch[1]
                 for elem in batch[2:]:
-                    if isinstance(elem, torch.Tensor):
-                        if elem.ndim >= 3:
-                            dtms = elem
-                        elif elem.ndim <= 2:
-                            labels = elem
-
+                    if isinstance(elem, torch.Tensor) and elem.ndim >= 3:
+                        dtms = elem
             elif isinstance(batch, dict):
                 images = batch.get("image", batch.get("images"))
                 masks = batch.get("mask", batch.get("masks"))
-                dtms = batch.get("dtm", batch.get("dtms"), None)  # type: ignore
+                dtms = batch.get("dtm", batch.get("dtms"), None) # type: ignore
             else:
                 raise TypeError(f"🚨 Tipe batch tidak dikenali: {type(batch)}")
 
-            images = images.to(device, non_blocking=True)  # type: ignore
-            masks = masks.to(device, non_blocking=True).float()  # type: ignore
-
+            images = images.to(device, non_blocking=True) # type: ignore
+            masks = masks.to(device, non_blocking=True).float() # type: ignore
             if dtms is not None:
                 dtms = dtms.to(device, non_blocking=True).float()
 
@@ -229,25 +204,19 @@ def evaluate(model, dataloader, criterion, device, gpu_transform, desc="Validati
                     else gpu_transform(images, masks)
                 )
                 if isinstance(trans_out, (tuple, list)):
+                    images, masks = trans_out[0], trans_out[1]
                     if len(trans_out) >= 3:
-                        images, masks, dtms = trans_out[:3]
-                    elif len(trans_out) == 2:
-                        images, masks = trans_out
+                        dtms = trans_out[2]
                 else:
                     images = trans_out
 
             with torch.autocast(device_type="cuda", dtype=amp_dtype):
-                outputs = model(images)  # Shape: [B, 2, H, W]
-                if dtms is not None:
-                    try:
-                        loss = criterion(outputs, masks, dtm_targets=dtms)
-                    except TypeError:
-                        try:
-                            loss = criterion(outputs, masks, dtms)
-                        except TypeError:
-                            loss = criterion(outputs, masks)
-                else:
-                    loss = criterion(outputs, masks)
+                outputs = model(images)
+                loss = (
+                    criterion(outputs, masks, dtm_targets=dtms)
+                    if dtms is not None
+                    else criterion(outputs, masks)
+                )
 
             probs = torch.sigmoid(outputs.float())
             preds = (probs > 0.5).to(torch.uint8)

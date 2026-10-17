@@ -645,11 +645,16 @@ def run_training_pipeline(
     checkpoint_path = os.path.join(logger.save_dir, "last_checkpoint.pth")
     path_best_val_dsc = os.path.join(logger.save_dir, "best_model_val_dsc.pth")
     path_best_val_mcc = os.path.join(logger.save_dir, "best_model_val_mcc.pth")
-    path_best_val_loss = os.path.join(logger.save_dir, "best_model_val_loss.pth")
+    path_best_val_loss = os.path.join(
+        logger.save_dir, "best_model_val_loss.pth"
+    )
 
     # 4. Auto-Resume Logic
     if os.path.exists(checkpoint_path):
-        print(f"🔄 Checkpoint terputus ditemukan! Memuat state dari: {checkpoint_path}")
+        print(
+            f"🔄 Checkpoint terputus ditemukan! Memuat state dari:"
+            f" {checkpoint_path}"
+        )
         checkpoint = torch.load(checkpoint_path, map_location=device)
         raw_model.load_state_dict(checkpoint["model_state"])
         optimizer.load_state_dict(checkpoint["optimizer_state"])
@@ -668,11 +673,15 @@ def run_training_pipeline(
         patience_counter = checkpoint.get("patience_counter", 0)
 
         logger.load_history_from_csv()
-        print(f"✅ Auto-resume sukses! Melanjutkan dari Epoch {start_epoch}")
+        print(
+            f"✅ Auto-resume sukses! Melanjutkan dari Epoch {start_epoch}"
+        )
 
     # 5. Training Loop Utama
     try:
-        print("🔥 Memulai Pelatihan Aktif Segmentasi DWT-Mamba (2-Channel)...")
+        print(
+            "🔥 Memulai Pelatihan Aktif Segmentasi DWT-Mamba (2-Channel)..."
+        )
         for epoch in range(start_epoch, CONFIG["max_epochs"] + 1):
             train_loss, train_dsc = train_one_epoch(
                 model,
@@ -694,12 +703,15 @@ def run_training_pipeline(
                 criterion,
                 device,
                 gpu_eval_transform,
+                amp_dtype=amp_dtype,  # Pass amp_dtype konsisten
                 desc="Validation",
             )
 
             scheduler.step()
 
-            val_metrics, _ = logger.compute_metrics(*val_eval, compute_hd95=False)
+            val_metrics, _ = logger.compute_metrics(
+                *val_eval, compute_hd95=False
+            )
             g_metrics = val_metrics["global_metrics"]
 
             val_dsc = g_metrics["mean_lesion_dsc"]
@@ -710,13 +722,19 @@ def run_training_pipeline(
             current_lr = optimizer.param_groups[0]["lr"]
 
             # Evaluasi Peningkatan Metrik
-            is_dsc_improved = val_dsc > (best_val_dsc + CONFIG["early_stop_delta"])
-            is_mcc_improved = val_cls_mcc > (best_val_mcc + CONFIG["early_stop_delta"])
-            is_loss_improved = val_loss < (best_val_loss - CONFIG["early_stop_delta"])
+            is_dsc_improved = val_dsc > (
+                best_val_dsc + CONFIG["early_stop_delta"]
+            )
+            is_mcc_improved = val_cls_mcc > (
+                best_val_mcc + CONFIG["early_stop_delta"]
+            )
+            is_loss_improved = val_loss < (
+                best_val_loss - CONFIG["early_stop_delta"]
+            )
 
             status_notes = []
 
-            # 1) Save Best Val DSC Model
+            # 1) Save Best Val DSC Model (Primary Metric)
             if is_dsc_improved:
                 best_val_dsc, best_dsc_epoch = val_dsc, epoch
                 safe_atomic_save(
@@ -742,7 +760,9 @@ def run_training_pipeline(
                     },
                     path_best_val_mcc,
                 )
-                status_notes.append(f"🧩 Best Val MCC Saved ({val_cls_mcc:.4f})")
+                status_notes.append(
+                    f"🧩 Best Val MCC Saved ({val_cls_mcc:.4f})"
+                )
 
             # 3) Save Best Val Loss Model
             if is_loss_improved:
@@ -756,14 +776,19 @@ def run_training_pipeline(
                     },
                     path_best_val_loss,
                 )
-                status_notes.append(f"📉 Best Val Loss Saved ({val_loss:.4f})")
+                status_notes.append(
+                    f"📉 Best Val Loss Saved ({val_loss:.4f})"
+                )
 
-            # Reset Patience jika ada minimal satu metrik kunci yang membaik
-            if is_dsc_improved or is_mcc_improved or is_loss_improved:
+            # Reset Early Stopping Patience HANYA jika metrik utama (Val DSC) membaik
+            if is_dsc_improved:
                 patience_counter = 0
-                status_msg = "  --> " + " | ".join(status_notes)
             else:
                 patience_counter += 1
+
+            if status_notes:
+                status_msg = "  --> " + " | ".join(status_notes)
+            else:
                 status_msg = (
                     "  --> ⏳ Patience:"
                     f" [{patience_counter}/{CONFIG['early_stop_patience']}]"
@@ -784,10 +809,11 @@ def run_training_pipeline(
             logger.export_csv()
 
             print(
-                f"Epoch [{epoch:03d}/{CONFIG['max_epochs']}] | LR: {current_lr:.6f} |"
-                f" Train Loss: {train_loss:.4f} - DSC: {train_dsc:.4f} | Val Loss:"
-                f" {val_loss:.4f} - DSC: {val_dsc:.4f} - IoU: {val_iou:.4f} - Slice"
-                f" MCC: {val_cls_mcc:.4f}{status_msg}"
+                f"Epoch [{epoch:03d}/{CONFIG['max_epochs']}] | LR:"
+                f" {current_lr:.6f} | Train Loss: {train_loss:.4f} - DSC:"
+                f" {train_dsc:.4f} | Val Loss: {val_loss:.4f} - DSC:"
+                f" {val_dsc:.4f} - IoU: {val_iou:.4f} - Slice MCC:"
+                f" {val_cls_mcc:.4f}{status_msg}"
             )
 
             # Save Last Checkpoint for Auto-Resume
