@@ -345,6 +345,7 @@ def build_optimizer_and_scheduler(
 
     return optimizer, scheduler
 
+
 def evaluate_best_checkpoints(
     model,
     logger,
@@ -645,9 +646,7 @@ def run_training_pipeline(
     checkpoint_path = os.path.join(logger.save_dir, "last_checkpoint.pth")
     path_best_val_dsc = os.path.join(logger.save_dir, "best_model_val_dsc.pth")
     path_best_val_mcc = os.path.join(logger.save_dir, "best_model_val_mcc.pth")
-    path_best_val_loss = os.path.join(
-        logger.save_dir, "best_model_val_loss.pth"
-    )
+    path_best_val_loss = os.path.join(logger.save_dir, "best_model_val_loss.pth")
 
     # 4. Auto-Resume Logic
     if os.path.exists(checkpoint_path):
@@ -673,15 +672,11 @@ def run_training_pipeline(
         patience_counter = checkpoint.get("patience_counter", 0)
 
         logger.load_history_from_csv()
-        print(
-            f"✅ Auto-resume sukses! Melanjutkan dari Epoch {start_epoch}"
-        )
+        print(f"✅ Auto-resume sukses! Melanjutkan dari Epoch {start_epoch}")
 
     # 5. Training Loop Utama
     try:
-        print(
-            "🔥 Memulai Pelatihan Aktif Segmentasi DWT-Mamba (2-Channel)..."
-        )
+        print("🔥 Memulai Pelatihan Aktif Segmentasi DWT-Mamba (2-Channel)...")
         for epoch in range(start_epoch, CONFIG["max_epochs"] + 1):
             train_loss, train_dsc = train_one_epoch(
                 model,
@@ -709,9 +704,7 @@ def run_training_pipeline(
 
             scheduler.step()
 
-            val_metrics, _ = logger.compute_metrics(
-                *val_eval, compute_hd95=False
-            )
+            val_metrics, _ = logger.compute_metrics(*val_eval, compute_hd95=False)
             g_metrics = val_metrics["global_metrics"]
 
             val_dsc = g_metrics["mean_lesion_dsc"]
@@ -722,15 +715,9 @@ def run_training_pipeline(
             current_lr = optimizer.param_groups[0]["lr"]
 
             # Evaluasi Peningkatan Metrik
-            is_dsc_improved = val_dsc > (
-                best_val_dsc + CONFIG["early_stop_delta"]
-            )
-            is_mcc_improved = val_cls_mcc > (
-                best_val_mcc + CONFIG["early_stop_delta"]
-            )
-            is_loss_improved = val_loss < (
-                best_val_loss - CONFIG["early_stop_delta"]
-            )
+            is_dsc_improved = val_dsc > (best_val_dsc + CONFIG["early_stop_delta"])
+            is_mcc_improved = val_cls_mcc > (best_val_mcc + CONFIG["early_stop_delta"])
+            is_loss_improved = val_loss < (best_val_loss - CONFIG["early_stop_delta"])
 
             status_notes = []
 
@@ -760,9 +747,7 @@ def run_training_pipeline(
                     },
                     path_best_val_mcc,
                 )
-                status_notes.append(
-                    f"🧩 Best Val MCC Saved ({val_cls_mcc:.4f})"
-                )
+                status_notes.append(f"🧩 Best Val MCC Saved ({val_cls_mcc:.4f})")
 
             # 3) Save Best Val Loss Model
             if is_loss_improved:
@@ -776,9 +761,7 @@ def run_training_pipeline(
                     },
                     path_best_val_loss,
                 )
-                status_notes.append(
-                    f"📉 Best Val Loss Saved ({val_loss:.4f})"
-                )
+                status_notes.append(f"📉 Best Val Loss Saved ({val_loss:.4f})")
 
             # Reset Early Stopping Patience HANYA jika metrik utama (Val DSC) membaik
             if is_dsc_improved:
