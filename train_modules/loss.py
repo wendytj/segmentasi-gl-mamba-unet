@@ -130,7 +130,7 @@ def _align_shapes(logits: torch.Tensor, targets: torch.Tensor):
 
 
 class DiceLoss(nn.Module):
-    """Multi-Channel Binary Soft Dice Loss / Generalized Dice Loss (GDL)."""
+    """Multi-Channel Binary Soft Dice Loss (Global Batch-Wise Accumulation)."""
 
     def __init__(
         self,
@@ -147,31 +147,37 @@ class DiceLoss(nn.Module):
         logits, targets = _align_shapes(logits, targets)
 
         probs = torch.sigmoid(logits)
-        probs = probs.contiguous().view(probs.size(0), probs.size(1), -1)
-        targets = targets.contiguous().view(targets.size(0), targets.size(1), -1)
-
-        intersection = torch.sum(probs * targets, dim=-1)  # [B, C]
-        cardinality = torch.sum(probs + targets, dim=-1)  # [B, C]
 
         if self.is_generalized:
-            volumes = torch.sum(targets, dim=-1)  # [B, C]
+            # GDL dihitung per sampel lalu dirata-rata
+            probs_flat = probs.contiguous().view(probs.size(0), probs.size(1), -1)
+            targets_flat = targets.contiguous().view(
+                targets.size(0), targets.size(1), -1
+            )
+            intersection = torch.sum(probs_flat * targets_flat, dim=-1)
+            cardinality = torch.sum(probs_flat + targets_flat, dim=-1)
+
+            volumes = torch.sum(targets_flat, dim=-1)
             weights = 1.0 / (volumes**2 + self.smooth)
             weights = weights / (torch.sum(weights, dim=-1, keepdim=True) + self.smooth)
 
             num = 2.0 * torch.sum(weights * intersection, dim=-1) + self.smooth
             den = torch.sum(weights * cardinality, dim=-1) + self.smooth
             dice_score = num / den
+            return torch.mean(1.0 - dice_score)
         else:
+            # 🌟 Standar Global Batch-Wise Sum (Sangat Stabil untuk Imbalance)
+            intersection = torch.sum(probs * targets, dim=(0, 2, 3))
+            cardinality = torch.sum(probs + targets, dim=(0, 2, 3))
+
             dice_score = (2.0 * intersection + self.smooth) / (
                 cardinality + self.smooth
             )
-            dice_score = torch.mean(dice_score, dim=-1)
-
-        return torch.mean(1.0 - dice_score)
+            return torch.mean(1.0 - dice_score)
 
 
 class TverskyLoss(nn.Module):
-    """Multi-Channel Binary Tversky Loss & Generalized Tversky Loss."""
+    """Multi-Channel Binary Tversky Loss (Global Batch-Wise Accumulation)."""
 
     def __init__(
         self,
@@ -192,15 +198,17 @@ class TverskyLoss(nn.Module):
         logits, targets = _align_shapes(logits, targets)
 
         probs = torch.sigmoid(logits)
-        probs = probs.contiguous().view(probs.size(0), probs.size(1), -1)
-        targets = targets.contiguous().view(targets.size(0), targets.size(1), -1)
-
-        tp = torch.sum(probs * targets, dim=-1)
-        fp = torch.sum(probs * (1.0 - targets), dim=-1)
-        fn = torch.sum((1.0 - probs) * targets, dim=-1)
 
         if self.is_generalized:
-            volumes = torch.sum(targets, dim=-1)
+            probs_flat = probs.contiguous().view(probs.size(0), probs.size(1), -1)
+            targets_flat = targets.contiguous().view(
+                targets.size(0), targets.size(1), -1
+            )
+            tp = torch.sum(probs_flat * targets_flat, dim=-1)
+            fp = torch.sum(probs_flat * (1.0 - targets_flat), dim=-1)
+            fn = torch.sum((1.0 - probs_flat) * targets_flat, dim=-1)
+
+            volumes = torch.sum(targets_flat, dim=-1)
             weights = 1.0 / (volumes**2 + self.smooth)
             weights = weights / (torch.sum(weights, dim=-1, keepdim=True) + self.smooth)
 
@@ -210,13 +218,17 @@ class TverskyLoss(nn.Module):
                 + self.smooth
             )
             tversky_score = num / den
+            return torch.mean(1.0 - tversky_score)
         else:
+            # 🌟 Standar Global Batch-Wise Sum
+            tp = torch.sum(probs * targets, dim=(0, 2, 3))
+            fp = torch.sum(probs * (1.0 - targets), dim=(0, 2, 3))
+            fn = torch.sum((1.0 - probs) * targets, dim=(0, 2, 3))
+
             tversky_score = (tp + self.smooth) / (
                 tp + self.alpha * fp + self.beta * fn + self.smooth
             )
-            tversky_score = torch.mean(tversky_score, dim=-1)
-
-        return torch.mean(1.0 - tversky_score)
+            return torch.mean(1.0 - tversky_score)
 
 
 class FocalLoss2D(nn.Module):
