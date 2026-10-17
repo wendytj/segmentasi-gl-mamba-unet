@@ -466,9 +466,15 @@ class ExperimentLogger:
         plt.savefig(os.path.join(self.save_dir, filename), dpi=300)
         plt.close()
 
-    def plot_learning_curves(self, test_res=None, filename="training_dashboard.png"):
-        """Render Dashboard Grafik Pelatihan Segmentasi."""
+    def plot_learning_curves(
+        self,
+        test_res=None,
+        filename="training_dashboard.png",
+        save_individual=True,
+    ):
+        """Render Dashboard Grafik Pelatihan Segmentasi & Ekspor File Terpisah (Total 7 PNG)."""
         if not self.history["epoch"]:
+            print("⚠️ Belum ada riwayat epoch untuk digambar grafiknya.")
             return
         sns.set_theme(style="whitegrid")
 
@@ -480,19 +486,16 @@ class ExperimentLogger:
         best_dsc_val = (
             self.history["val_dsc"][best_idx] if self.history["val_dsc"] else 0.0
         )
+        patience_limit = self.hparams.get("early_stop_patience", 10)
 
         summary_text = (
             f"   === SEGMENTATION TRAINING SUMMARY ===\n\n"
-            f" • Total Epochs Executed : {len(epochs)} /"
-            f" {self.hparams.get('max_epochs', '-')}\n"
+            f" • Total Epochs Executed : {len(epochs)} / {self.hparams.get('max_epochs', '-')}\n"
             f" • Peak Model Saved Epoch: {best_epoch}\n"
             f" • Best Val Mean DSC    : {best_dsc_val:.4f}\n"
-            f" • Best Val Mean IoU    :"
-            f" {self.history['val_iou'][best_idx]:.4f}\n"
-            f" • Slice Val Cls F1     :"
-            f" {self.history['val_cls_f1'][best_idx]:.4f}\n"
-            f" • Slice Val Cls MCC    :"
-            f" {self.history['val_cls_mcc'][best_idx]:.4f}\n\n"
+            f" • Best Val Mean IoU    : {self.history['val_iou'][best_idx]:.4f}\n"
+            f" • Slice Val Cls F1     : {self.history['val_cls_f1'][best_idx]:.4f}\n"
+            f" • Slice Val Cls MCC    : {self.history['val_cls_mcc'][best_idx]:.4f}\n\n"
         )
 
         if test_res is not None:
@@ -501,13 +504,15 @@ class ExperimentLogger:
                 f"   === FINAL TEST BENCHMARK ===\n\n"
                 f" • Test Mean Lesion DSC : {g['mean_lesion_dsc']:.4f}\n"
                 f" • Test Mean Lesion IoU : {g['mean_lesion_iou']:.4f}\n"
-                f" • Test Mean HD95 (mm)  :"
-                f" {g['mean_lesion_hd95'] if g['mean_lesion_hd95'] else 'N/A'}\n"
+                f" • Test Mean HD95 (mm)  : {g['mean_lesion_hd95'] if g['mean_lesion_hd95'] else 'N/A'}\n"
                 f" • Slice Test Cls Acc   : {g['slice_cls_accuracy']:.4f}\n"
                 f" • Slice Test Cls MCC   : {g['slice_cls_mcc']:.4f}\n"
                 f" • Slice Test Cls AUC   : {g['slice_cls_auc']:.4f}"
             )
 
+        # -------------------------------------------------------------
+        # 1. RENDER DASHBOARD GABUNGAN (File 1/7)
+        # -------------------------------------------------------------
         fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 
         # Panel 1: Loss
@@ -534,6 +539,8 @@ class ExperimentLogger:
             label=f"Best Ep ({best_epoch})",
         )
         axes[0, 0].set_title("Loss Dynamics", fontweight="bold")
+        axes[0, 0].set_xlabel("Epoch")
+        axes[0, 0].set_ylabel("Loss")
         axes[0, 0].legend()
 
         # Panel 2: DSC
@@ -560,6 +567,8 @@ class ExperimentLogger:
             label=f"Best Ep ({best_epoch})",
         )
         axes[0, 1].set_title("Mean Dice Coefficient (DSC)", fontweight="bold")
+        axes[0, 1].set_xlabel("Epoch")
+        axes[0, 1].set_ylabel("DSC Score")
         axes[0, 1].legend()
 
         # Panel 3: Val IoU & Slice MCC
@@ -579,6 +588,8 @@ class ExperimentLogger:
         )
         axes[0, 2].axvline(x=best_epoch, color="gold", linestyle=":", linewidth=2)
         axes[0, 2].set_title("Validation Quality (IoU vs Slice MCC)", fontweight="bold")
+        axes[0, 2].set_xlabel("Epoch")
+        axes[0, 2].set_ylabel("Score")
         axes[0, 2].legend()
 
         # Panel 4: LR
@@ -590,6 +601,9 @@ class ExperimentLogger:
             linewidth=2,
         )
         axes[1, 0].set_title("Learning Rate Schedule", fontweight="bold")
+        axes[1, 0].set_xlabel("Epoch")
+        axes[1, 0].set_ylabel("Learning Rate")
+        axes[1, 0].ticklabel_format(style="scientific", scilimits=(0, 0), axis="y")
         axes[1, 0].legend()
 
         # Panel 5: Patience
@@ -600,8 +614,18 @@ class ExperimentLogger:
             color="orangered",
             linewidth=2,
             marker="o",
+            markersize=4,
+        )
+        axes[1, 1].axhline(
+            y=patience_limit,
+            color="red",
+            linestyle="--",
+            linewidth=2,
+            label=f"Patience Limit ({patience_limit})",
         )
         axes[1, 1].set_title("Early Stopping Patience Tracker", fontweight="bold")
+        axes[1, 1].set_xlabel("Epoch")
+        axes[1, 1].set_ylabel("Stagnant Epochs")
         axes[1, 1].legend()
 
         # Panel 6: Summary Text
@@ -623,5 +647,175 @@ class ExperimentLogger:
         )
 
         plt.tight_layout()
-        plt.savefig(os.path.join(self.save_dir, filename), dpi=300)
+        dashboard_path = os.path.join(self.save_dir, filename)
+        plt.savefig(dashboard_path, dpi=300)
         plt.close()
+
+        print(f"📊 [1/7] Dashboard Gabungan 6-in-1 disimpan di: {dashboard_path}")
+
+        # -------------------------------------------------------------
+        # 2. EKSPOR GRAFIK TERPISAH (File 2-7/7)
+        # -------------------------------------------------------------
+        if save_individual:
+            plots_dir = os.path.join(self.save_dir, "plots")
+            os.makedirs(plots_dir, exist_ok=True)
+
+            # File 2: Loss Curve
+            plt.figure(figsize=(7, 5))
+            plt.plot(
+                epochs,
+                self.history["train_loss"],
+                label="Train Loss",
+                color="crimson",
+                linewidth=2,
+            )
+            plt.plot(
+                epochs,
+                self.history["val_loss"],
+                label="Val Loss",
+                color="navy",
+                linestyle="--",
+                linewidth=2,
+            )
+            plt.axvline(
+                x=best_epoch,
+                color="gold",
+                linestyle=":",
+                linewidth=2,
+                label=f"Best Ep ({best_epoch})",
+            )
+            plt.title("Loss Dynamics per Epoch", fontweight="bold")
+            plt.xlabel("Epoch")
+            plt.ylabel("Loss")
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(os.path.join(plots_dir, "loss_curve.png"), dpi=300)
+            plt.close()
+
+            # File 3: DSC Curve
+            plt.figure(figsize=(7, 5))
+            plt.plot(
+                epochs,
+                self.history["train_dsc"],
+                label="Train DSC",
+                color="forestgreen",
+                linewidth=2,
+            )
+            plt.plot(
+                epochs,
+                self.history["val_dsc"],
+                label="Val DSC",
+                color="darkorange",
+                linestyle="--",
+                linewidth=2,
+            )
+            plt.axvline(
+                x=best_epoch,
+                color="gold",
+                linestyle=":",
+                linewidth=2,
+                label=f"Best Ep ({best_epoch})",
+            )
+            plt.title("Mean Dice Coefficient (DSC) Progression", fontweight="bold")
+            plt.xlabel("Epoch")
+            plt.ylabel("DSC Score")
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(os.path.join(plots_dir, "dsc_curve.png"), dpi=300)
+            plt.close()
+
+            # File 4: Val Metrics (IoU vs Slice MCC)
+            plt.figure(figsize=(7, 5))
+            plt.plot(
+                epochs,
+                self.history["val_iou"],
+                label="Val Mean IoU",
+                color="teal",
+                linewidth=2,
+            )
+            plt.plot(
+                epochs,
+                self.history["val_cls_mcc"],
+                label="Slice Val MCC",
+                color="purple",
+                linewidth=2,
+            )
+            plt.axvline(x=best_epoch, color="gold", linestyle=":", linewidth=2)
+            plt.title("Validation Quality (IoU vs Slice MCC)", fontweight="bold")
+            plt.xlabel("Epoch")
+            plt.ylabel("Score")
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(os.path.join(plots_dir, "val_metrics_iou_mcc.png"), dpi=300)
+            plt.close()
+
+            # File 5: Learning Rate Schedule
+            plt.figure(figsize=(7, 5))
+            plt.plot(
+                epochs,
+                self.history["lr"],
+                label="Effective LR",
+                color="darkmagenta",
+                linewidth=2,
+            )
+            plt.title("Learning Rate Schedule per Epoch", fontweight="bold")
+            plt.xlabel("Epoch")
+            plt.ylabel("Learning Rate")
+            plt.ticklabel_format(style="scientific", scilimits=(0, 0), axis="y")
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(os.path.join(plots_dir, "lr_schedule.png"), dpi=300)
+            plt.close()
+
+            # File 6: Patience Tracker
+            plt.figure(figsize=(7, 5))
+            plt.plot(
+                epochs,
+                self.history["patience"],
+                label="Patience Count",
+                color="orangered",
+                linewidth=2,
+                marker="o",
+                markersize=4,
+            )
+            plt.axhline(
+                y=patience_limit,
+                color="red",
+                linestyle="--",
+                linewidth=2,
+                label=f"Patience Limit ({patience_limit})",
+            )
+            plt.title("Early Stopping Patience Tracker", fontweight="bold")
+            plt.xlabel("Epoch")
+            plt.ylabel("Stagnant Epochs")
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(os.path.join(plots_dir, "patience_tracker.png"), dpi=300)
+            plt.close()
+
+            # File 7: Performance & Test Benchmark Summary Card
+            plt.figure(figsize=(7, 5))
+            plt.axis("off")
+            plt.text(
+                0.05,
+                0.95,
+                summary_text,
+                transform=plt.gca().transAxes,
+                fontsize=10.5,
+                verticalalignment="top",
+                fontfamily="monospace",
+                bbox=dict(
+                    boxstyle="round,pad=0.8",
+                    facecolor="whitesmoke",
+                    alpha=0.9,
+                    edgecolor="lightgray",
+                ),
+            )
+            plt.title("Performance & Benchmark Summary", fontweight="bold")
+            plt.tight_layout()
+            plt.savefig(os.path.join(plots_dir, "summary_card.png"), dpi=300)
+            plt.close()
+
+            print(
+                f"📁 [2-7/7] 6 Grafik terpisah berhasil disimpan di folder: {plots_dir}"
+            )
