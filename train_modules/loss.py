@@ -511,7 +511,7 @@ if __name__ == "__main__":
         num_classes=num_classes,
         device=device,
         use_class_weights=True,
-        weight_mode="median",
+        weight_mode="cui_cb",
     )
 
     dummy_logits = torch.randn(batch_size, num_classes, h, w, requires_grad=True)

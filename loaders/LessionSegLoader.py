@@ -22,53 +22,47 @@ class StrokeSegmentationNPZDataset(Dataset):
     ):
         self.use_dtm = use_dtm
 
-        # 1. Standardisasi Dimensi Citra -> [N, C, H, W]
-        if images_array.ndim == 3:  # [N, H, W] -> [N, 1, H, W]
-            images_array = np.expand_dims(images_array, axis=1)
-        elif images_array.ndim == 4 and images_array.shape[-1] in [
-            1,
-            3,
-        ]:  # [N, H, W, C] -> [N, C, H, W]
-            images_array = np.transpose(images_array, (0, 3, 1, 2))
+        # Helper privat internal untuk standardisasi dimensi [N, C, H, W] secara ringkas & cepat
+        def _standardize_array(arr, is_mask=False):
+            if arr.ndim == 3:  # [N, H, W] -> [N, 1, H, W]
+                arr = np.expand_dims(arr, axis=1)
+            elif arr.ndim == 4 and arr.shape[-1] in [
+                1,
+                2,
+                3,
+            ]:  # [N, H, W, C] -> [N, C, H, W]
+                arr = np.transpose(arr, (0, 3, 1, 2))
 
-        # 2. Standardisasi Dimensi Masker -> [N, C, H, W] (Aman untuk 1, 2, atau 3 channel)
-        if masks_array.ndim == 3:  # [N, H, W] -> [N, 1, H, W]
-            masks_array = np.expand_dims(masks_array, axis=1)
-        elif masks_array.ndim == 4 and masks_array.shape[-1] in [
-            1,
-            2,
-            3,
-        ]:  # [N, H, W, C] -> [N, C, H, W]
-            masks_array = np.transpose(masks_array, (0, 3, 1, 2))
+            # Pastikan tipe data dan C-contiguous memory layout terpenuhi sekaligus
+            target_dtype = np.int64 if is_mask else np.float32
+            return np.ascontiguousarray(arr, dtype=target_dtype)
 
-        # 3. Standardisasi Dimensi DTM -> [N, C, H, W] (Khusus dtms_array)
+        # 1. Standardisasi Array menggunakan helper terpusat
+        images_array = _standardize_array(images_array, is_mask=False)
+        masks_array = _standardize_array(masks_array, is_mask=True)
+        labels_array = np.ascontiguousarray(labels_array, dtype=np.int64)
+
+        # 2. Konversi langsung ke PyTorch Tensor (Zero-copy aman dengan memori kontigu)
+        self.images = torch.from_numpy(images_array)
+        self.masks = torch.from_numpy(masks_array)
+        self.labels = torch.from_numpy(labels_array).reshape(-1)
+
+        # 3. Standardisasi DTM secara kondisional
         if self.use_dtm:
             if dtms_array is None:
                 raise ValueError(
                     "🚨 Parameter `use_dtm=True`, tetapi `dtms_array` bernilai None / tidak tersedia di NPZ!"
                 )
-            if dtms_array.ndim == 3:
-                dtms_array = np.expand_dims(dtms_array, axis=1)
-            elif dtms_array.ndim == 4 and dtms_array.shape[-1] in [1, 2, 3]:
-                dtms_array = np.transpose(dtms_array, (0, 3, 1, 2))
-
-            dtms_array = np.ascontiguousarray(dtms_array)
-            self.dtms = torch.from_numpy(dtms_array).float()
-
-        # Pastikan buffer memori C-Contiguous untuk zero-copy loading
-        images_array = np.ascontiguousarray(images_array)
-        masks_array = np.ascontiguousarray(masks_array)
-        labels_array = np.ascontiguousarray(labels_array)
-
-        self.images = torch.from_numpy(images_array).float()
-        self.masks = torch.from_numpy(masks_array).long()
-        self.labels = torch.from_numpy(labels_array).long().reshape(-1)
+            dtms_array = _standardize_array(dtms_array, is_mask=False)
+            self.dtms = torch.from_numpy(dtms_array)
+        else:
+            self.dtms = None
 
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, idx):
-        if self.use_dtm:
+        if self.use_dtm and self.dtms is not None:
             return self.images[idx], self.masks[idx], self.labels[idx], self.dtms[idx]
         return self.images[idx], self.masks[idx], self.labels[idx]
 
@@ -309,7 +303,7 @@ def get_stroke_segmentation_dataloaders(
         "persistent_workers": use_persistent,
     }
     if use_persistent:
-        base_kwargs["prefetch_factor"] = 1
+        base_kwargs["prefetch_factor"] = 2
 
     train_loader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, **base_kwargs

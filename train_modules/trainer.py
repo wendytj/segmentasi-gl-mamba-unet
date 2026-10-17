@@ -5,19 +5,26 @@ from tqdm import tqdm
 
 
 def compute_quick_batch_dsc(preds, masks, num_classes=2):
-    """Kalkulasi cepat Mean DSC khusus 2 kanal biner untuk progress bar tqdm per batch."""
+    """Kalkulasi cepat Mean DSC khusus 2 kanal biner berbasis tensor GPU murni."""
     dscs = []
     for c in range(num_classes):
         pred_c = preds[:, c] == 1 if preds.ndim == 4 else preds == c
         gt_c = masks[:, c] == 1 if masks.ndim == 4 else masks == c
 
-        intersection = (pred_c & gt_c).sum().item()
-        cardinality = pred_c.sum().item() + gt_c.sum().item()
-        if cardinality > 0:
-            dscs.append((2.0 * intersection) / (cardinality + 1e-6))
+        intersection = (pred_c & gt_c).sum().float()
+        cardinality = pred_c.sum().float() + gt_c.sum().float()
 
-    return float(np.mean(dscs)) if dscs else 1.0
+        # Hitung langsung di tensor tanpa .item() agar tidak sync ke CPU
+        dsc_c = torch.where(
+            cardinality > 0,
+            (2.0 * intersection) / (cardinality + 1e-6),
+            torch.tensor(1.0, device=preds.device, dtype=torch.float32),
+        )
+        dscs.append(dsc_c)
 
+    # Rata-rata di atas tensor GPU, baru di-item-kan sekali di luar jika diperlukan
+    mean_dsc = torch.stack(dscs).mean()
+    return mean_dsc.item()
 
 def train_one_epoch(
     model,
