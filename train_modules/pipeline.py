@@ -656,13 +656,24 @@ def run_training_pipeline(
         )
         checkpoint = torch.load(checkpoint_path, map_location=device)
         raw_model.load_state_dict(checkpoint["model_state"])
-        optimizer.load_state_dict(checkpoint["optimizer_state"])
+
+        # 🌟 SAFE LOAD OPTIMIZER (Mencegah KeyError jika restored dari Best Model)
+        if "optimizer_state" in checkpoint and checkpoint["optimizer_state"]:
+            optimizer.load_state_dict(checkpoint["optimizer_state"])
+            print("  ├─ Optimizer state berhasil dimuat.")
+        else:
+            print(
+                "  ├─ Optimizer state tidak ditemukan / di-reset (Fresh"
+                " start optimizer)."
+            )
+
         if "scheduler_state" in checkpoint and checkpoint["scheduler_state"]:
             scheduler.load_state_dict(checkpoint["scheduler_state"])
+
         if scaler and checkpoint.get("scaler_state"):
             scaler.load_state_dict(checkpoint["scaler_state"])
 
-        start_epoch = checkpoint["epoch"] + 1
+        start_epoch = checkpoint.get("epoch", 1) + 1
         best_val_dsc = checkpoint.get("best_val_dsc", -1.0)
         best_val_mcc = checkpoint.get("best_val_mcc", -1.0)
         best_val_loss = checkpoint.get("best_val_loss", float("inf"))
@@ -676,7 +687,9 @@ def run_training_pipeline(
 
     # 5. Training Loop Utama
     try:
-        print("🔥 Memulai Pelatihan Aktif Segmentasi Hybrid DWT GL-Mamba UNet (2-Channel)...")
+        print(
+            "🔥 Memulai Pelatihan Aktif Segmentasi Hybrid DWT GL-Mamba UNet (2-Channel)..."
+        )
         for epoch in range(start_epoch, CONFIG["max_epochs"] + 1):
             train_loss, train_dsc = train_one_epoch(
                 model,
