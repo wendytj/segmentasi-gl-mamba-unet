@@ -676,7 +676,7 @@ def run_training_pipeline(
 
     # 5. Training Loop Utama
     try:
-        print("🔥 Memulai Pelatihan Aktif Segmentasi DWT-Mamba (2-Channel)...")
+        print("🔥 Memulai Pelatihan Aktif Segmentasi Hybrid DWT GL-Mamba (2-Channel)...")
         for epoch in range(start_epoch, CONFIG["max_epochs"] + 1):
             train_loss, train_dsc = train_one_epoch(
                 model,
