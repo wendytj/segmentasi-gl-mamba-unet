@@ -839,8 +839,7 @@ def run_training_pipeline(
                 )
                 status_notes.append(f"📉 Best Val Loss Saved ({val_loss:.4f})")
 
-            # Reset Early Stopping Patience HANYA jika metrik utama (Val DSC) membaik
-            if is_dsc_improved:
+            if is_dsc_improved or is_loss_improved or is_mcc_improved:
                 patience_counter = 0
             else:
                 patience_counter += 1
