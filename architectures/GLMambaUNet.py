@@ -15,41 +15,30 @@ from mamba_ssm import Mamba
 
 
 class GuidedBiM(nn.Module):
-    """
-    Guided Bidirectional Mamba Mechanism (Eq. 11, 12, 13)
-    Diakselerasi menggunakan CUDA Kernel dari library official `mamba_ssm`.
-    Global prompt g disuntikkan secara dinamis (x + g) ke dalam parameter SSM.
-    """
 
     def __init__(self, d_model, d_state=16, d_conv=4, expand=2):
         super().__init__()
-        # Forward & Backward Selective Scan Mamba
         self.fwd_mamba = Mamba(
             d_model=d_model, d_state=d_state, d_conv=d_conv, expand=expand
         )
         self.bwd_mamba = Mamba(
             d_model=d_model, d_state=d_state, d_conv=d_conv, expand=expand
         )
+
+        # 🌟 Stabilisator Numerik FP16/BF16
+        self.norm = nn.LayerNorm(d_model)
         self.out_proj = nn.Linear(d_model, d_model)
 
     def forward(self, x, g):
-        """
-        x: Local sequence feature (B, L, D)
-        g: Global prompt context feature (B, L, D)
-        """
-        # 1. Injeksi Global Prompt Context (x_t + g_t) -> Eq. (8, 9, 10)
         prompt_input = x + g
-
-        # 2. Forward Sequence Scanning
         y_fwd = self.fwd_mamba(prompt_input)
 
-        # 3. Backward Sequence Scanning (Reversed Input)
         prompt_rev = torch.flip(prompt_input, dims=[1])
         y_bwd_rev = self.bwd_mamba(prompt_rev)
         y_bwd = torch.flip(y_bwd_rev, dims=[1])
 
-        # 4. Bidirectional Sum Projection -> Eq. (13)
-        y = y_fwd + y_bwd
+        # Normalisasi akumulasi bidirectional sebelum dihantam ke Linear
+        y = self.norm(y_fwd + y_bwd)
         return self.out_proj(y)
 
 
