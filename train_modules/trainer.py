@@ -40,7 +40,6 @@ def train_one_epoch(
     optimizer.zero_grad(set_to_none=True)
     pbar = tqdm(dataloader, desc="Training", leave=False)
 
-    # Filter hanya parameter aktif yang membutuhkan gradien
     trainable_params = [
         p
         for group in optimizer.param_groups
@@ -60,12 +59,12 @@ def train_one_epoch(
         elif isinstance(batch, dict):
             images = batch.get("image", batch.get("images"))
             masks = batch.get("mask", batch.get("masks"))
-            dtms = batch.get("dtm", batch.get("dtms"), None) # type: ignore
+            dtms = batch.get("dtm", batch.get("dtms"), None)  # type: ignore
         else:
             raise TypeError(f"🚨 Tipe batch tidak dikenali: {type(batch)}")
 
-        images = images.to(device, non_blocking=True) # type: ignore
-        masks = masks.to(device, non_blocking=True).float() # type: ignore
+        images = images.to(device, non_blocking=True)  # type: ignore
+        masks = masks.to(device, non_blocking=True).float()  # type: ignore
         if dtms is not None:
             dtms = dtms.to(device, non_blocking=True).float()
 
@@ -99,6 +98,35 @@ def train_one_epoch(
             )
             loss_scaled = loss / accumulation_steps
 
+        # 🔍 SENSOR 1: INSPEKSI SANGAT DETAIL JIKA LOSS MENJADI NaN / Inf
+        if torch.isnan(loss) or torch.isinf(loss):
+            print(f"\n🚨 [NaN/Inf DETECTED AT BATCH {i}/{len(dataloader)}]")
+            print(
+                f"  ├─ Output Logits : min={outputs.min().item():.4f},"
+                f" max={outputs.max().item():.4f},"
+                f" has_nan={torch.isnan(outputs).any().item()}"
+            )
+            print(
+                f"  ├─ Mask Target   : min={masks.min().item():.4f},"
+                f" max={masks.max().item():.4f},"
+                f" sum={masks.sum().item():.1f}"
+            )
+            if dtms is not None:
+                print(
+                    f"  ├─ DTM Target    : min={dtms.min().item():.4f},"
+                    f" max={dtms.max().item():.4f},"
+                    f" has_nan={torch.isnan(dtms).any().item()}"
+                )
+            print(
+                f"  └─ Raw Loss Val  : {loss.item()} (Loss Scaled:"
+                f" {loss_scaled.item()})"
+            )
+
+            # Lempar exception agar training langsung STOP sebelum optimizer merusak bobot
+            raise ValueError(
+                f"⛔ Pelatihan dihentikan otomatis: NaN Loss pada Batch {i}"
+            )
+
         # 4. BACKWARD PASS
         if use_bf16 or scaler is None:
             loss_scaled.backward()
@@ -108,7 +136,20 @@ def train_one_epoch(
         # 5. GRADIENT ACCUMULATION & STEP
         if (i + 1) % accumulation_steps == 0 or (i + 1) == len(dataloader):
             if use_bf16 or scaler is None:
-                torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    trainable_params, max_norm=1.0
+                )
+
+                # 🔍 SENSOR 2: INSPEKSI GRADIENT NORM
+                if torch.isnan(grad_norm) or torch.isinf(grad_norm):
+                    print(
+                        f"\n🚨 [NaN Gradient Norm Detected at Batch {i}] Grad Norm:"
+                        f" {grad_norm}"
+                    )
+                    raise ValueError(
+                        f"⛔ Pelatihan dihentikan: Gradient Norm NaN pada Batch {i}"
+                    )
+
                 optimizer.step()
 
                 if dora_magnitude_params:
@@ -116,7 +157,19 @@ def train_one_epoch(
                         p.data.clamp_(min=1e-6)
             else:
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(trainable_params, max_norm=1.0)
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    trainable_params, max_norm=1.0
+                )
+
+                # 🔍 SENSOR 2 (FP16): INSPEKSI GRADIENT NORM
+                if torch.isnan(grad_norm) or torch.isinf(grad_norm):
+                    print(
+                        f"\n🚨 [NaN Gradient Norm Detected at Batch {i}] Grad Norm:"
+                        f" {grad_norm}"
+                    )
+                    raise ValueError(
+                        f"⛔ Pelatihan dihentikan: Gradient Norm NaN pada Batch {i}"
+                    )
 
                 scale_before = scaler.get_scale()
                 scaler.step(optimizer)
@@ -129,7 +182,7 @@ def train_one_epoch(
 
             optimizer.zero_grad(set_to_none=True)
 
-        # 6. BATCH LOGGING (Konversi FP32 untuk presisi probabilitas)
+        # 6. BATCH LOGGING
         batch_size = images.size(0)
         running_loss += loss.item() * batch_size
 
@@ -183,12 +236,12 @@ def evaluate(
             elif isinstance(batch, dict):
                 images = batch.get("image", batch.get("images"))
                 masks = batch.get("mask", batch.get("masks"))
-                dtms = batch.get("dtm", batch.get("dtms"), None) # type: ignore
+                dtms = batch.get("dtm", batch.get("dtms"), None)  # type: ignore
             else:
                 raise TypeError(f"🚨 Tipe batch tidak dikenali: {type(batch)}")
 
-            images = images.to(device, non_blocking=True) # type: ignore
-            masks = masks.to(device, non_blocking=True).float() # type: ignore
+            images = images.to(device, non_blocking=True)  # type: ignore
+            masks = masks.to(device, non_blocking=True).float()  # type: ignore
             if dtms is not None:
                 dtms = dtms.to(device, non_blocking=True).float()
 
