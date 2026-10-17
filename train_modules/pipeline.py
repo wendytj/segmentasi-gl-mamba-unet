@@ -601,43 +601,43 @@ def evaluate_best_checkpoints(
     )
 
 
-def register_nan_hooks(model):
-    """Memasang forward hook dengan Full Module Path untuk pelacakan spesifik 100% presisi."""
-    nan_detected = [False]
+# def register_nan_hooks(model):
+#     """Memasang forward hook dengan Full Module Path untuk pelacakan spesifik 100% presisi."""
+#     nan_detected = [False]
 
-    def create_hook(full_module_path):
-        def nan_hook(module, input, output):
-            if nan_detected[0]:
-                return
+#     def create_hook(full_module_path):
+#         def nan_hook(module, input, output):
+#             if nan_detected[0]:
+#                 return
 
-            outputs = (
-                [output]
-                if isinstance(output, torch.Tensor)
-                else (output if isinstance(output, (tuple, list)) else [])
-            )
+#             outputs = (
+#                 [output]
+#                 if isinstance(output, torch.Tensor)
+#                 else (output if isinstance(output, (tuple, list)) else [])
+#             )
 
-            for out in outputs:
-                if isinstance(out, torch.Tensor) and torch.isnan(out).any():
-                    nan_detected[0] = True
-                    print("\n💥 [NaN DETECTED AT EXACT MODULE PATH]")
-                    print(f" ├─ Full Path   : {full_module_path}")
-                    print(f" ├─ Class Type  : {module.__class__.__name__}")
-                    print(f" └─ Output Shape: {out.shape}")
-                    break
+#             for out in outputs:
+#                 if isinstance(out, torch.Tensor) and torch.isnan(out).any():
+#                     nan_detected[0] = True
+#                     print("\n💥 [NaN DETECTED AT EXACT MODULE PATH]")
+#                     print(f" ├─ Full Path   : {full_module_path}")
+#                     print(f" ├─ Class Type  : {module.__class__.__name__}")
+#                     print(f" └─ Output Shape: {out.shape}")
+#                     break
 
-        return nan_hook
+#         return nan_hook
 
-    handles = []
-    for name, module in model.named_modules():
-        # Hanya pasang pada leaf-modules dan kirim full path (misal: 'bottleneck.bim_local.out_proj')
-        if len(list(module.children())) == 0:
-            handles.append(module.register_forward_hook(create_hook(name)))
+#     handles = []
+#     for name, module in model.named_modules():
+#         # Hanya pasang pada leaf-modules dan kirim full path (misal: 'bottleneck.bim_local.out_proj')
+#         if len(list(module.children())) == 0:
+#             handles.append(module.register_forward_hook(create_hook(name)))
 
-    print(
-        f"🛡️ [NaN Guard] High-Precision Hooks aktif pada {len(handles)}"
-        " leaf-modules."
-    )
-    return handles
+#     print(
+#         f"🛡️ [NaN Guard] High-Precision Hooks aktif pada {len(handles)}"
+#         " leaf-modules."
+#     )
+#     return handles
 
 
 def run_training_pipeline(
@@ -735,19 +735,20 @@ def run_training_pipeline(
         logger.load_history_from_csv()
         print(f"✅ Auto-resume sukses! Melanjutkan dari Epoch {start_epoch}")
 
-    target_base_lr = 0.001
-    lr_ratios = [1.0, 0.1, 0.02]  # Ratio per group: [Scratch, DWT Linear, DWT Conv]
+    # target_base_lr = 0.001
+    # lr_ratios = [1.0, 0.1, 0.02]  # Ratio per group: [Scratch, DWT Linear, DWT Conv]
 
-    for group, ratio in zip(optimizer.param_groups, lr_ratios):
-        group["lr"] = target_base_lr * ratio
+    # for group, ratio in zip(optimizer.param_groups, lr_ratios):
+    #     group["lr"] = target_base_lr * ratio
 
-    scheduler.last_epoch = start_epoch - 1
-    print(
-        f"⚡ [Hardcoded LR Applied] Base LR dipaksa melompat ke {target_base_lr}"
-        f" (Scheduler Last Epoch: {scheduler.last_epoch})"
-    )
+    # scheduler.last_epoch = start_epoch - 1
+    # print(
+    #     f"⚡ [Hardcoded LR Applied] Base LR dipaksa melompat ke {target_base_lr}"
+    #     f" (Scheduler Last Epoch: {scheduler.last_epoch})"
+    # )
 
-    nan_hook_handles = register_nan_hooks(raw_model)
+    # nan_hook_handles = register_nan_hooks(raw_model)
+
     # 5. Training Loop Utama
     try:
         print(
@@ -914,10 +915,10 @@ def run_training_pipeline(
         logger.export_csv()
         logger.plot_learning_curves()
         raise e
-    finally:
-        for handle in nan_hook_handles:
-            handle.remove()
-        print("🧹 [NaN Guard] Forward hooks berhasil dibersihkan.")
+    # finally:
+    #     for handle in nan_hook_handles:
+    #         handle.remove()
+    #     print("🧹 [NaN Guard] Forward hooks berhasil dibersihkan.")
 
     gc.collect()
     torch.cuda.empty_cache()
