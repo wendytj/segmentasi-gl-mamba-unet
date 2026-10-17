@@ -694,7 +694,17 @@ def run_training_pipeline(
             f" {checkpoint_path}"
         )
         checkpoint = torch.load(checkpoint_path, map_location=device)
-        raw_model.load_state_dict(checkpoint["model_state"])
+        missing, unexpected = raw_model.load_state_dict(
+            checkpoint["model_state"], strict=False
+        )
+        print(
+            f"  ├─ State dict loaded (Missing: {len(missing)} [LayerNorm baru] |"
+            f" Unexpected: {len(unexpected)})"
+        )
+
+        # Warn jika ada unexpected keys (biar langsung ngeh kalau ada key nyangkut)
+        if unexpected:
+            print(f"  ⚠️ Warning! Key tidak terduga ditemukan: {unexpected}")
 
         # 🌟 SAFE LOAD OPTIMIZER (Mencegah KeyError jika restored dari Best Model)
         if "optimizer_state" in checkpoint and checkpoint["optimizer_state"]:
