@@ -198,9 +198,6 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--label_smoothing", type=float, default=CONFIG["label_smoothing"]
-    )
-    parser.add_argument(
         "--use_class_weights",
         action=argparse.BooleanOptionalAction,
         default=CONFIG["use_class_weights"],
