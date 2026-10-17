@@ -602,40 +602,41 @@ def evaluate_best_checkpoints(
 
 
 def register_nan_hooks(model):
-    """Memasang forward hook khusus pada leaf modules untuk mendeteksi layer pertama pemicu NaN."""
-    nan_detected = [
-        False
-    ]  # Flag mutable untuk mengunci log setelah NaN pertama ditemukan
+    """Memasang forward hook dengan Full Module Path untuk pelacakan spesifik 100% presisi."""
+    nan_detected = [False]
 
-    def nan_hook(module, input, output):
-        if nan_detected[0]:
-            return
+    def create_hook(full_module_path):
+        def nan_hook(module, input, output):
+            if nan_detected[0]:
+                return
 
-        # Ambil tensor dari output (baik berbentuk Tensor, Tuple, maupun List)
-        outputs = (
-            [output]
-            if isinstance(output, torch.Tensor)
-            else (output if isinstance(output, (tuple, list)) else [])
-        )
+            outputs = (
+                [output]
+                if isinstance(output, torch.Tensor)
+                else (output if isinstance(output, (tuple, list)) else [])
+            )
 
-        for out in outputs:
-            if isinstance(out, torch.Tensor) and torch.isnan(out).any():
-                nan_detected[0] = True
-                print(
-                    "\n💥 [NaN DETECTED AT LAYER LEVEL]"
-                    f"\n ├─ Layer Pemicu : {module.__class__.__name__}"
-                    f" ({module._get_name()})"
-                    f"\n └─ Shape Output : {out.shape}"
-                )
-                break
+            for out in outputs:
+                if isinstance(out, torch.Tensor) and torch.isnan(out).any():
+                    nan_detected[0] = True
+                    print("\n💥 [NaN DETECTED AT EXACT MODULE PATH]")
+                    print(f" ├─ Full Path   : {full_module_path}")
+                    print(f" ├─ Class Type  : {module.__class__.__name__}")
+                    print(f" └─ Output Shape: {out.shape}")
+                    break
+
+        return nan_hook
 
     handles = []
     for name, module in model.named_modules():
-        # Hanya pasang pada leaf modules (layer atomik paling bawah) agar presisi
+        # Hanya pasang pada leaf-modules dan kirim full path (misal: 'bottleneck.bim_local.out_proj')
         if len(list(module.children())) == 0:
-            handles.append(module.register_forward_hook(nan_hook))
+            handles.append(module.register_forward_hook(create_hook(name)))
 
-    print(f"🛡️ [NaN Guard] Forward hooks aktif pada {len(handles)} leaf-modules.")
+    print(
+        f"🛡️ [NaN Guard] High-Precision Hooks aktif pada {len(handles)}"
+        " leaf-modules."
+    )
     return handles
 
 
