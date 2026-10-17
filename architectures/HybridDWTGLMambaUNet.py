@@ -128,11 +128,12 @@ class HybridDWTGLMambaUNet(nn.Module):
 
             # 🌟 Buat dictionary baru dan skip total semua key yang mengandung 'classifier'
             clean_state_dict = {}
+            unused_keys = ["classifier", "latent_encoder", "proj_fused", "proj_latent"]
             for k, v in raw_state_dict.items():
-                if "classifier" in k:
-                    print(f"  - Membuang key mismatched: {k}")
+                k_clean = k.replace("module.", "")
+                if any(uk in k_clean for uk in unused_keys):
                     continue
-                clean_state_dict[k] = v
+                clean_state_dict[k_clean] = v
 
             # Load state dict dengan strict=False
             missing_keys, unexpected_keys = self.dwt_encoder.load_state_dict(

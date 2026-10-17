@@ -15,14 +15,13 @@ from mamba_ssm import Mamba
 
 
 def window_partition(x, window_size):
-    """
-    Memecah tensor (B, C, H, W) menjadi kumpulan sub-kernel (B * num_windows, window_size*window_size, C).
-    """
     B, C, H, W = x.shape
-    x = x.view(B, C, H // window_size, window_size, W // window_size, window_size)
-    # Permute ke (B, num_h, num_w, ws, ws, C) -> flatten ke sekuens token lokal
+    # Gunakan .reshape() agar aman terhadap memory_format=torch.channels_last
+    x = x.reshape(B, C, H // window_size, window_size, W // window_size, window_size)
     windows = (
-        x.permute(0, 2, 4, 3, 5, 1).contiguous().view(-1, window_size * window_size, C)
+        x.permute(0, 2, 4, 3, 5, 1)
+        .contiguous()
+        .reshape(-1, window_size * window_size, C)
     )
     return windows
 
