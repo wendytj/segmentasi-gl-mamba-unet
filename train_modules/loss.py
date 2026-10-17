@@ -108,9 +108,21 @@ def compute_class_weights(
         raw_weights = torch.log(raw_ratio + 1.0)
         max_clamp = 20.0
     elif weight_mode == "cui_cb":
-        eff_pos = (1.0 - torch.pow(beta, pos_c)) / (1.0 - beta)
-        eff_neg = (1.0 - torch.pow(beta, neg_c)) / (1.0 - beta)
-        raw_weights = eff_neg / (eff_pos + 1e-6)
+        n_samples = (
+            len(train_loader.dataset)
+            if hasattr(train_loader, "dataset") and len(train_loader.dataset) > 0
+            else float(total_pixels / (224 * 224))
+        )
+
+        n_pos = (pos_c / total_pixels) * n_samples
+        n_neg = (neg_c / total_pixels) * n_samples
+
+        # 1. Hitung bobot Cui et al. persis sesuai rumus asli: W_y = (1 - beta) / (1 - beta^n)
+        w_pos = (1.0 - beta) / (1.0 - torch.pow(beta, n_pos) + 1e-7)
+        w_neg = (1.0 - beta) / (1.0 - torch.pow(beta, n_neg) + 1e-7)
+
+        # 2. Relatifkan ke background untuk pos_weight BCE
+        raw_weights = w_pos / w_neg
         max_clamp = 50.0
     else:
         raise ValueError(f"🚨 Unknown weight_mode: '{weight_mode}'")
