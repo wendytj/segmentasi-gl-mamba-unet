@@ -14,6 +14,28 @@ import torch.nn.functional as F
 from mamba_ssm import Mamba
 
 
+def window_partition(x, window_size):
+    """
+    Memecah tensor (B, C, H, W) menjadi kumpulan sub-kernel (B * num_windows, window_size*window_size, C).
+    """
+    B, C, H, W = x.shape
+    x = x.view(B, C, H // window_size, window_size, W // window_size, window_size)
+    # Permute ke (B, num_h, num_w, ws, ws, C) -> flatten ke sekuens token lokal
+    windows = (
+        x.permute(0, 2, 4, 3, 5, 1).contiguous().view(-1, window_size * window_size, C)
+    )
+    return windows
+
+
+def window_reverse(windows, window_size, H, W, B, C):
+    """
+    Mengembalikan kumpulan sub-kernel kembali ke bentuk tensor spasial 2D (B, C, H, W).
+    """
+    x = windows.view(B, H // window_size, W // window_size, window_size, window_size, C)
+    x = x.permute(0, 5, 1, 3, 2, 4).contiguous().view(B, C, H, W)
+    return x
+
+
 class GuidedBiM(nn.Module):
 
     def __init__(self, d_model, d_state=16, d_conv=4, expand=2):
@@ -47,16 +69,16 @@ class GuidedBiM(nn.Module):
 # ==============================================================================
 class GLMBlock(nn.Module):
     """
-    Global-to-Local Mamba Block (Eq. 1 - 7)
-    - Step 1: Global Context Extraction (GCM)
-    - Step 2: Spatial Attention Modulation
-    - Step 3: Local Guided Feature Extraction (LGM)
+    Global-to-Local Mamba Block (Eq. 1 - 7 di paper Wang et al., 2026)
     """
 
-    def __init__(self, in_channels, patch_size=4, d_state=16, d_conv=4, expand=2):
+    def __init__(
+        self, in_channels, patch_size=4, window_size=28, d_state=16, d_conv=4, expand=2
+    ):
         super().__init__()
         self.in_channels = in_channels
         self.patch_size = patch_size
+        self.window_size = window_size  # Ukuran sub-kernel lokal (28x28 = 784 token)
 
         # 1. Global Context Mamba (GCM)
         self.pool = nn.AdaptiveAvgPool2d((patch_size, patch_size))
@@ -77,40 +99,36 @@ class GLMBlock(nn.Module):
     def forward(self, F_l):
         B, C, H, W = F_l.shape
 
-        # ----------------------------------------------------------------------
-        # Step 1: Global Context Extraction (GCM) -> Eq. (1, 2, 3)
-        # ----------------------------------------------------------------------
-        P_l = self.pool(F_l)  # (B, C, P, P) -> Eq. (1)
+        # Step 1: Global Context Extraction (GCM)
+        P_l = self.pool(F_l)  # (B, C, P, P)
         P_l_flat = P_l.flatten(2).transpose(1, 2)  # (B, P*P, C)
 
-        # Global BiM dengan self-prompting
-        P_l_prime_flat = self.bim_global(P_l_flat, P_l_flat)  # Eq. (2)
+        P_l_prime_flat = self.bim_global(P_l_flat, P_l_flat)
         P_l_prime = P_l_prime_flat.transpose(1, 2).view(
             B, C, self.patch_size, self.patch_size
         )
-
-        # Unpooling kembali ke resolusi asal (H, W)
         F_global = F.interpolate(
             P_l_prime, size=(H, W), mode="bilinear", align_corners=False
-        )  # Eq. (3)
+        )
 
-        # ----------------------------------------------------------------------
-        # Step 2: Spatial Attention Modulation -> Eq. (4, 5)
-        # ----------------------------------------------------------------------
-        M_l = self.sigmoid(self.conv_attn(F_global))  # Spatial Attention Map Eq. (4)
-        F_guided = F_l * M_l + F_l  # Modulated Feature Eq. (5)
+        # Step 2: Spatial Attention Modulation
+        M_l = self.sigmoid(self.conv_attn(F_global))
+        F_guided = F_l * M_l + F_l
 
-        # ----------------------------------------------------------------------
-        # Step 3: Local Guided Feature Extraction (LGM) -> Eq. (6, 7)
-        # ----------------------------------------------------------------------
-        F_guided_flat = F_guided.flatten(2).transpose(1, 2)  # (B, H*W, C)
-        F_global_flat = F_global.flatten(2).transpose(1, 2)  # (B, H*W, C)
+        # Step 3: Local Guided Feature Extraction (LGM) via Window Partition (Eq. 6-7)
+        # Gunakan window_size yang adaptif jika resolusi fitur lebih kecil dari window default
+        ws = min(self.window_size, H, W)
 
-        # LGM dipandu oleh F_global sebagai continuous prompt
-        F_l_double_prime = self.bim_local(F_guided_flat, F_global_flat)  # Eq. (7)
+        # Pecah menjadi sub-kernel jendela lokal
+        F_guided_win = window_partition(F_guided, ws)  # Shape: (B * N_win, ws*ws, C)
+        F_global_win = window_partition(F_global, ws)  # Shape: (B * N_win, ws*ws, C)
 
-        # Reshape kembali ke 2D Spatial Feature Map
-        out = F_l_double_prime.transpose(1, 2).view(B, C, H, W)
+        # Jalankan Guided BiM pada sekuens pendek per-jendela secara paralel di GPU
+        F_l_double_prime = self.bim_local(F_guided_win, F_global_win)
+
+        # Susun kembali jendela menjadi dimensi spasial asal (B, C, H, W)
+        out = window_reverse(F_l_double_prime, ws, H, W, B, C)
+
         return self.norm(out + F_l)
 
 

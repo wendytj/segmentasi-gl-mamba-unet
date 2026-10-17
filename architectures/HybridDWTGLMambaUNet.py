@@ -35,6 +35,13 @@ class HybridDWTGLMambaUNet(nn.Module):
             embed_dim=dwt_embed_dim,
         )
 
+        del self.dwt_encoder.latent_encoder
+        del self.dwt_encoder.proj_fused
+        del self.dwt_encoder.proj_latent
+        del self.dwt_encoder.classifier
+        del self.dwt_encoder.gap
+        del self.dwt_encoder.drop
+
         # =========================================================================
         # 2. ENCODER BRANCH B: GL-MAMBA SPATIAL ENCODER
         # =========================================================================

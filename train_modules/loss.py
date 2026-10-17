@@ -86,10 +86,24 @@ def compute_class_weights(
         raw_weights = raw_ratio
         max_clamp = 300.0
     elif weight_mode == "median":
-        freq_pos = pos_c / total_pixels
-        median_pos_freq = torch.median(freq_pos)
-        raw_weights = median_pos_freq / freq_pos
-        max_clamp = 20.0
+        # 1. Total piksel background murni (seluruh kanal lesi bernilai 0)
+        bg_pixels = (total_pixels - pos_c.sum()).clamp(min=1.0)
+
+        # 2. Distribusi frekuensi: f_bg [1] dan f_fg [C]
+        f_bg = (bg_pixels / total_pixels).clamp(min=1e-6)
+        f_fg = (pos_c / total_pixels).clamp(min=1e-6)
+
+        # 3. Gabungkan seluruh kelas [1 + C] untuk mencari median global
+        all_freqs = torch.cat([f_bg.unsqueeze(0), f_fg])
+        median_freq = torch.median(all_freqs)
+
+        # 4. Bobot Median Frequency Klasik (Eigen & Fergus, 2015)
+        w_bg = median_freq / f_bg
+        w_fg = median_freq / f_fg
+
+        # 5. Proyeksikan ke pos_weight BCE relatif terhadap background
+        raw_weights = w_fg / w_bg  # Shape: [C], identik dengan f_bg / f_fg
+        max_clamp = 50.0
     elif weight_mode == "cdw":
         raw_weights = torch.sqrt(raw_ratio)
         max_clamp = 50.0

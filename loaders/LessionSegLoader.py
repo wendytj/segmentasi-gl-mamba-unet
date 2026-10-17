@@ -25,35 +25,42 @@ class StrokeSegmentationNPZDataset(Dataset):
         # 1. Standardisasi Dimensi Citra -> [N, C, H, W]
         if images_array.ndim == 3:  # [N, H, W] -> [N, 1, H, W]
             images_array = np.expand_dims(images_array, axis=1)
-        elif images_array.ndim == 4 and images_array.shape[-1] in [1, 3]:
+        elif images_array.ndim == 4 and images_array.shape[-1] in [
+            1,
+            3,
+        ]:  # [N, H, W, C] -> [N, C, H, W]
             images_array = np.transpose(images_array, (0, 3, 1, 2))
 
-        # 2. Standardisasi Dimensi Masker -> [N, 1, H, W]
+        # 2. Standardisasi Dimensi Masker -> [N, C, H, W] (Aman untuk 1, 2, atau 3 channel)
         if masks_array.ndim == 3:  # [N, H, W] -> [N, 1, H, W]
             masks_array = np.expand_dims(masks_array, axis=1)
-        elif masks_array.ndim == 4 and masks_array.shape[-1] == 1:
+        elif masks_array.ndim == 4 and masks_array.shape[-1] in [
+            1,
+            2,
+            3,
+        ]:  # [N, H, W, C] -> [N, C, H, W]
             masks_array = np.transpose(masks_array, (0, 3, 1, 2))
 
-        # 3. Standardisasi Dimensi DTM -> [N, C, H, W] (Jika diaktifkan)
+        # 3. Standardisasi Dimensi DTM -> [N, C, H, W] (Khusus dtms_array)
         if self.use_dtm:
             if dtms_array is None:
                 raise ValueError(
                     "🚨 Parameter `use_dtm=True`, tetapi `dtms_array` bernilai None / tidak tersedia di NPZ!"
                 )
-            if (
-                dtms_array.ndim == 4 and dtms_array.shape[-1] == 3
-            ):  # [N, H, W, C] -> [N, C, H, W]
+            if dtms_array.ndim == 3:
+                dtms_array = np.expand_dims(dtms_array, axis=1)
+            elif dtms_array.ndim == 4 and dtms_array.shape[-1] in [1, 2, 3]:
                 dtms_array = np.transpose(dtms_array, (0, 3, 1, 2))
+
             dtms_array = np.ascontiguousarray(dtms_array)
             self.dtms = torch.from_numpy(dtms_array).float()
 
-        # 💡 KUNCI BEBAS LAG: Memori C-Contiguous untuk zero-copy loading
+        # Pastikan buffer memori C-Contiguous untuk zero-copy loading
         images_array = np.ascontiguousarray(images_array)
         masks_array = np.ascontiguousarray(masks_array)
         labels_array = np.ascontiguousarray(labels_array)
 
         self.images = torch.from_numpy(images_array).float()
-        # Masker dikonversi ke Long Tensor untuk target Loss Segmentasi (0: Background, 1: Ischemia, 2: Bleeding)
         self.masks = torch.from_numpy(masks_array).long()
         self.labels = torch.from_numpy(labels_array).long().reshape(-1)
 
