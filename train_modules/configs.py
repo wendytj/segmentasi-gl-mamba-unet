@@ -13,9 +13,9 @@ CONFIG = {
     "num_classes": 2,
     "npz_path": "data/dataset_seg_2ch_224x224_nocrop_ratio_0_1.npz",
     "pretrained_path": "weights/classification_merged_best.pth",
-    "batch_size": 64,
-    "eval_batch_size": 1024,
-    "accumulation_steps": 1,
+    "batch_size": 16,
+    "eval_batch_size": 16,
+    "accumulation_steps": 4,
     "num_workers": 4,
     "img_size": 224,
     "aug_trial": "trial1",  # 'trial1', 'trial2', 'trial3', atau 'trial4'
