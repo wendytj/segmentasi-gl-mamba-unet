@@ -51,9 +51,9 @@ CONFIG = {
     # --------------------------------------------------------------------------
     # 5. Konfigurasi Loss Function (Dinamis)
     # --------------------------------------------------------------------------
-    "loss_type": "dice+ce",  # 'dice+ce', 'tversky+ce', 'tversky+focal', 'dice+gsl', 'tversky+gsl'
-    "is_generalized": False,
-    "use_class_weights": True,  # Pembobotan kelas piksel statis
+    "loss_type": "tversky+ce",  # 'dice+ce', 'tversky+ce', 'tversky+focal', 'dice+gsl', 'tversky+gsl'
+    "is_generalized": True,
+    "use_class_weights": False,  # Pembobotan kelas piksel statis
     "weight_mode": "median",  # Pilihan: ['dbce', 'cdw', 'raw', 'median', 'cui_cb']
     "weight_beta": 0.9999,  # Effective Number of Samples (Cui et al., 2019)
     "tversky_alpha": 0.3,  # Hyperparameter Tversky Loss
