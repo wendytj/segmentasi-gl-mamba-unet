@@ -64,7 +64,7 @@ def compute_class_weights(
 
     # Jika user set use_class_weights=False, langsung return 1.0 (dummy weights)
     if not use_class_weights:
-        return torch.ones(num_classes, device=device), pixel_counts.to(device)
+        return torch.ones(actual_channels, device=device), pixel_counts.to(device)
 
     # ==========================================================================
     # LOGIKA DI BAWAH INI TETAP UTUH SEPERTI SEMULA
@@ -295,8 +295,7 @@ class FocalLoss2D(nn.Module):
 
 
 class GeneralizedSurfaceLoss(nn.Module):
-    """Generalized Surface Loss (GSL) berbasis DTM sesuai Celaya et al.
-    """
+    """Generalized Surface Loss (GSL) berbasis DTM sesuai Celaya et al."""
 
     def __init__(self, smooth: float = 1e-5):
         super().__init__()
@@ -403,7 +402,7 @@ def build_loss_criterion(
         weight_str = "Weighted=False"
 
     def _instantiate_single_loss(name: str) -> nn.Module:
-        if name in ["dice", "soft_dice"]:
+        if name in ["dice"]:
             return DiceLoss(is_generalized=is_generalized)
         elif name in ["tversky"]:
             return TverskyLoss(
@@ -411,8 +410,7 @@ def build_loss_criterion(
                 beta=tversky_beta,
                 is_generalized=is_generalized,
             )
-        elif name in ["ce", "cross_entropy", "wce"]:
-            # Buat custom class wrapper untuk BCEWithLogitsLoss agar 100% aman dari casting Long/Float
+        elif name in ["ce"]:
             class CustomBCELoss(nn.Module):
                 def __init__(self, pos_weight=None):
                     super().__init__()
@@ -423,14 +421,14 @@ def build_loss_criterion(
                     return self.bce(logits.float(), targets.float())
 
             pos_w = (
-                weights.view(1, -1, 1, 1).float().to(weights.device)
+                weights.view(-1).float().to(weights.device)
                 if weights is not None
                 else None
             )
             return CustomBCELoss(pos_weight=pos_w)
-        elif name in ["focal", "focal_loss"]:
+        elif name in ["focal"]:
             return FocalLoss2D(gamma=focal_gamma, weight=weights)  # type: ignore
-        elif name in ["gsl", "surface", "surface_loss"]:
+        elif name in ["gsl"]:
             return GeneralizedSurfaceLoss()
         else:
             raise ValueError(f"🚨 Sub-loss '{name}' tidak dikenali!")
