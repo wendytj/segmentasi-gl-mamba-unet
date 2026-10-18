@@ -30,10 +30,9 @@ def configure_hybrid_fine_tuning(model: HybridDWTGLMambaUNet, config):
         for param in model.dwt_encoder.parameters():
             param.requires_grad = False
 
-        # Aktifkan module spesifik tanpa adapter PEFT
+        # True Selective: Membekukan seluruh ekstraktor wavelet & Mamba SSM (pe_branches & spase_branches),
+        # hanya melatih transisi patch dan fusi subband frekuensi (~15% parameter DWT).
         active_modules = [
-            model.dwt_encoder.pe_branches,
-            model.dwt_encoder.spase_branches,
             model.dwt_encoder.pm_branches,
             model.dwt_encoder.mb_gsf,
         ]
@@ -41,8 +40,7 @@ def configure_hybrid_fine_tuning(model: HybridDWTGLMambaUNet, config):
             for param in module.parameters():
                 param.requires_grad = True
         print(
-            " 🎯 [DWT Encoder] Fine-tuning Selektif aktif pada (pe_branches,"
-            " spase_branches, pm_branches, mb_gsf)."
+            " 🎯 [DWT Encoder] Fine-tuning Selektif aktif pada (pm_branches, mb_gsf)."
         )
 
     elif strategy == "peft":
