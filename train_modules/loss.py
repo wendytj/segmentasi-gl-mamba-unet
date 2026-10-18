@@ -295,7 +295,8 @@ class FocalLoss2D(nn.Module):
 
 
 class GeneralizedSurfaceLoss(nn.Module):
-    """Generalized Surface Loss (GSL) berbasis DTM 2-Channel."""
+    """Generalized Surface Loss (GSL) berbasis DTM sesuai Celaya et al.
+    """
 
     def __init__(self, smooth: float = 1e-5):
         super().__init__()
@@ -305,7 +306,7 @@ class GeneralizedSurfaceLoss(nn.Module):
         self,
         logits: torch.Tensor,
         targets: torch.Tensor,
-        dtm_targets: torch.Tensor = None,  # type: ignore
+        dtm_targets: torch.Tensor = None,
     ) -> torch.Tensor:
         if dtm_targets is None:
             raise ValueError(
@@ -316,12 +317,16 @@ class GeneralizedSurfaceLoss(nn.Module):
         _, dtm_targets = _align_shapes(logits, dtm_targets)
 
         probs = torch.sigmoid(logits)
-        surface_diff = dtm_targets * (1.0 - (targets + probs))
-        numerator = torch.sum(surface_diff**2, dim=(2, 3))
+
+        # Suku residual Celaya et al.: (1 - (T + P))
+        surface_term = dtm_targets * (1.0 - (targets + probs))
+        numerator = torch.sum(surface_term**2, dim=(2, 3))
         denominator = torch.sum(dtm_targets**2, dim=(2, 3)) + self.smooth
 
-        gsl_score = 1.0 - (numerator / denominator)
-        return torch.mean(1.0 - gsl_score)
+        # Eq. 12: L_gsl = 1 - (Numerator / Denominator)
+        # Langsung return tanpa pengurangan ganda
+        loss_gsl = 1.0 - (numerator / denominator)
+        return torch.mean(loss_gsl)
 
 
 # ============================================================================
