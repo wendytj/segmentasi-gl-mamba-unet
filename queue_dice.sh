@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================================="
-echo "🚀 Memulai [MOCK] Antrean Eksperimen Ablasi Loss Dice"
+echo "🚀 Memulai Antrean Eksperimen Ablasi Loss Dice"
 echo "$(date)"
 echo "=========================================================="
 
