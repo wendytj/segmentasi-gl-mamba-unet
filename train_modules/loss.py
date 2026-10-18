@@ -411,6 +411,7 @@ def build_loss_criterion(
                 is_generalized=is_generalized,
             )
         elif name in ["ce"]:
+
             class CustomBCELoss(nn.Module):
                 def __init__(self, pos_weight=None):
                     super().__init__()
@@ -421,7 +422,7 @@ def build_loss_criterion(
                     return self.bce(logits.float(), targets.float())
 
             pos_w = (
-                weights.view(-1).float().to(weights.device)
+                weights.view(1, -1, 1, 1).float().to(weights.device)
                 if weights is not None
                 else None
             )
@@ -532,7 +533,7 @@ if __name__ == "__main__":
         },
         {
             "name": "L2: Dice + WCE (Pixel-Weighted)",
-            "config": {"loss_type": "dice+wce", "use_class_weights": True},
+            "config": {"loss_type": "dice+ce", "use_class_weights": True},
         },
         {
             "name": "L3: Tversky + CE (Asymmetric)",

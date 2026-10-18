@@ -15,7 +15,7 @@ echo "✅ [1/4] Selesai: $(date)"
 sleep 10
 
 echo ""
-echo "▶️ [2/4] Menjalankan: Tversky + Unweighted BCE..."
+echo "▶️ [2/4] Menjalankan: Tversky + Weighted BCE..."
 
 python train.py --experiment_code mock_tversky_ce --loss_type tversky+ce --use_class_weights --weight_mode median --max_epochs 1 --warmup_epochs 0
 
