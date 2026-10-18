@@ -61,8 +61,7 @@ def configure_hybrid_fine_tuning(model: HybridDWTGLMambaUNet, config):
             target_modules=config.get("target_modules", None),
         )
         print(
-            f" 🧬 [DWT Encoder] PEFT Adapter ({peft_method.upper()}) berhasil"
-            " disuntikkan ke LINEAR_TARGET_MODULES & CONV_TARGET_MODULES."
+            " 🧬 [DWT Encoder] Dual-Track PEFT aktif: PRODIAL (Linear) & CoLoRA (Conv2d)."
         )
 
     else:
