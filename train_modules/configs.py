@@ -18,7 +18,7 @@ CONFIG = {
     "accumulation_steps": 4,
     "num_workers": 4,
     "img_size": 224,
-    "aug_trial": "trial1",  # 'trial1', 'trial2', 'trial3', atau 'trial4'
+    "aug_trial": "trial3",  # 'trial1', 'trial2', 'trial3', atau 'trial4'
     # --------------------------------------------------------------------------
     # 2. Saklar Model & Fine-Tuning Stage 2
     # --------------------------------------------------------------------------
