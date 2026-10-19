@@ -116,7 +116,7 @@ def parse_args():
         "--aug_trial",
         type=str,
         default=CONFIG["aug_trial"],
-        choices=["trial1", "trial2", "trial3", "trial4", "trial5"],
+        choices=["trial1", "trial2", "trial3", "trial4"],
         help="Skema matriks augmentasi (Trial 1 = legacy, Trial 2-5 = fixed)",
     )
 
