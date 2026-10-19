@@ -71,8 +71,14 @@ class StrokeSegmentationNPZDataset(Dataset):
 # VARIASI SKEMA AUGMENTASI GPU PASANGAN (IMAGE & MASK) UNTUK ABLASI
 # ==============================================================================
 class GPUSegmentationAugmenter(nn.Module):
-    """Wrapper augmentasi GPU pasangan (Image, Mask, DTM) yang diselaraskan 100%
-    dengan urutan matriks ablasi tahap klasifikasi DWT-Mamba.
+    """Wrapper augmentasi GPU pasangan (Image, Mask, DTM).
+
+    - Trial 1: Legacy Baseline (Bilinear paksa pada Mask - identik dengan run
+    Loss saat ini)
+    - Trial 2: Perbaikan Trial 1 (H.Flip + Blur + Affine, Mask steril Nearest)
+    - Trial 3: Perbaikan Trial 2 (Blur + Affine, Mask steril Nearest)
+    - Trial 4: Perbaikan Trial 3 (Affine Only, Mask steril Nearest)
+    - Trial 5: Perbaikan Trial 4 (Elastic + Affine, Mask steril Nearest)
     """
 
     def __init__(self, trial_mode="trial1", use_dtm: bool = False):
@@ -80,12 +86,21 @@ class GPUSegmentationAugmenter(nn.Module):
         self.trial_mode = trial_mode
         self.use_dtm = use_dtm
 
-        # 🌟 Trial 1: H. Flip + Gauss. Blur + Affine (Sesuai gpu_train_transform utama)
+        affine_kwargs_fixed = {
+            "degrees": (-5, 5),
+            "translate": (0.03, 0.03),
+            "scale": (0.95, 1.05),
+            "fill": 0,
+        }
+
+        # =========================================================================
+        # 1. TRIAL 1 (LEGACY): Paksa Bilinear (Sesuai run Loss saat ini)
+        # =========================================================================
         self.transform_trial1 = v2.Compose(
             [
                 v2.RandomHorizontalFlip(p=0.5),
                 v2.RandomAffine(
-                    degrees=(-5, 5),  # <- Diperbaiki jadi (-5, 5)
+                    degrees=(-5, 5),
                     translate=(0.03, 0.03),
                     scale=(0.95, 1.05),
                     interpolation=v2.InterpolationMode.BILINEAR,
@@ -94,52 +109,31 @@ class GPUSegmentationAugmenter(nn.Module):
             ]
         )
 
-        self.blur_trial1 = v2.RandomApply(
-            [v2.GaussianBlur(kernel_size=3, sigma=(0.1, 0.8))], p=0.3
-        )
-
-        # 🌟 Trial 2: Gauss. Blur + Affine (Tanpa H. Flip)
+        # =========================================================================
+        # 2. TRIAL 2 s.d. 5 (FIXED): Masker otomatis Nearest via tv_tensors
+        # =========================================================================
+        # Trial 2: H. Flip + Affine (Fixed dari Trial 1 lama)
         self.transform_trial2 = v2.Compose(
-            [
-                v2.RandomAffine(
-                    degrees=(-5, 5),  # <- Diperbaiki jadi (-5, 5)
-                    translate=(0.03, 0.03),
-                    scale=(0.95, 1.05),
-                    interpolation=v2.InterpolationMode.BILINEAR,
-                    fill=0,
-                ),
-            ]
+            [v2.RandomHorizontalFlip(p=0.5), v2.RandomAffine(**affine_kwargs_fixed)]
         )
 
-        self.blur_trial2 = v2.RandomApply(
-            [v2.GaussianBlur(kernel_size=3, sigma=(0.1, 0.8))], p=0.3
-        )
+        # Trial 3: Affine (Fixed dari Trial 2 lama - tanpa H. Flip)
+        self.transform_trial3 = v2.Compose([v2.RandomAffine(**affine_kwargs_fixed)])
 
-        # 🌟 Trial 3: Affine Only (Tanpa H. Flip & Tanpa Blur - Performa terbaik di klasifikasi)
-        self.transform_trial3 = v2.Compose(
-            [
-                v2.RandomAffine(
-                    degrees=(-5, 5),  # <- Diperbaiki jadi (-5, 5)
-                    translate=(0.03, 0.03),
-                    scale=(0.95, 1.05),
-                    interpolation=v2.InterpolationMode.BILINEAR,
-                    fill=0,
-                ),
-            ]
-        )
+        # Trial 4: Affine Only (Fixed dari Trial 3 lama - tanpa Blur & tanpa Flip)
+        self.transform_trial4 = v2.Compose([v2.RandomAffine(**affine_kwargs_fixed)])
 
-        # Cadangan Trial 4: Elastic Transform + Affine (Untuk uji deformasi jaringan lunak)
-        self.transform_trial4 = v2.Compose(
+        # Trial 5: Elastic + Affine (Fixed dari Trial 4 lama)
+        self.transform_trial5 = v2.Compose(
             [
                 v2.ElasticTransform(alpha=20.0, sigma=5.0, fill=0),
-                v2.RandomAffine(
-                    degrees=(-5, 5),  # <- Diperbaiki jadi (-5, 5)
-                    translate=(0.03, 0.03),
-                    scale=(0.95, 1.05),
-                    interpolation=v2.InterpolationMode.BILINEAR,
-                    fill=0,
-                ),
+                v2.RandomAffine(**affine_kwargs_fixed),
             ]
+        )
+
+        # Gaussian Blur (Hanya diterapkan pada Image)
+        self.blur_op = v2.RandomApply(
+            [v2.GaussianBlur(kernel_size=3, sigma=(0.1, 0.8))], p=0.3
         )
 
     def forward(self, images, masks, dtms=None):
@@ -153,63 +147,43 @@ class GPUSegmentationAugmenter(nn.Module):
                 return images, mask_out, dtm_out
             return images, mask_out
 
-        # Bungkus ke tv_tensors agar transformasi spasial tereksekusi secara sinkron
+        # Bungkus ke tv_tensors agar v2 mengenali tipe citra dan tipe masker
         images_tv = tv_tensors.Image(images)
         masks_tv = tv_tensors.Mask(masks)
+        dtms_tv = (
+            tv_tensors.Image(dtms) if (self.use_dtm and dtms is not None) else None
+        )
 
-        if self.use_dtm and dtms is not None:
-            dtms_tv = tv_tensors.Image(dtms)
+        transform_map = {
+            "trial1": self.transform_trial1,
+            "trial2": self.transform_trial2,
+            "trial3": self.transform_trial3,
+            "trial4": self.transform_trial4,
+            "trial5": self.transform_trial5,
+        }
 
-        # Seleksi Trial Berdasarkan Urutan Klasifikasi
-        if self.trial_mode == "trial1":  # H. Flip + Gauss. Blur + Affine
-            if self.use_dtm and dtms is not None:
-                img_aug, mask_aug, dtm_aug = self.transform_trial1(
-                    images_tv, masks_tv, dtms_tv
-                )
-            else:
-                img_aug, mask_aug = self.transform_trial1(images_tv, masks_tv)
-            # Blur HANYA pada Image (Steril untuk Mask dan DTM)
-            img_aug = self.blur_trial1(img_aug)
+        tf = transform_map.get(self.trial_mode, self.transform_trial1)
 
-        elif self.trial_mode == "trial2":  # Gauss. Blur + Affine
-            if self.use_dtm and dtms is not None:
-                img_aug, mask_aug, dtm_aug = self.transform_trial2(
-                    images_tv, masks_tv, dtms_tv
-                )
-            else:
-                img_aug, mask_aug = self.transform_trial2(images_tv, masks_tv)
-            # Blur HANYA pada Image
-            img_aug = self.blur_trial2(img_aug)
-
-        elif self.trial_mode == "trial3":  # Affine Only
-            if self.use_dtm and dtms is not None:
-                img_aug, mask_aug, dtm_aug = self.transform_trial3(
-                    images_tv, masks_tv, dtms_tv
-                )
-            else:
-                img_aug, mask_aug = self.transform_trial3(images_tv, masks_tv)
-
-        elif self.trial_mode == "trial4":  # Elastic Transform + Affine
-            if self.use_dtm and dtms is not None:
-                img_aug, mask_aug, dtm_aug = self.transform_trial4(
-                    images_tv, masks_tv, dtms_tv
-                )
-            else:
-                img_aug, mask_aug = self.transform_trial4(images_tv, masks_tv)
+        # Eksekusi Transformasi Spasial Sinkron
+        if self.use_dtm and dtms_tv is not None:
+            img_aug, mask_aug, dtm_aug = tf(images_tv, masks_tv, dtms_tv)
         else:
-            img_aug, mask_aug = images_tv, masks_tv
-            dtm_aug = dtms_tv if (self.use_dtm and dtms is not None) else None
+            img_aug, mask_aug = tf(images_tv, masks_tv)
+            dtm_aug = None
 
-        # Konversi Masker kembali ke Long Tensor 3D [B, H, W]
+        # Terapkan Blur HANYA pada Image untuk Trial 1, Trial 2, dan Trial 3
+        if self.trial_mode in ["trial1", "trial2", "trial3"]:
+            img_aug = self.blur_op(img_aug)
+
+        # Konversi kembali ke standar Tensor
         mask_out = mask_aug.as_subclass(torch.Tensor).long()
         if mask_out.ndim == 4 and mask_out.shape[1] == 1:
             mask_out = mask_out.squeeze(1)
 
         img_out = img_aug.as_subclass(torch.Tensor)
 
-        # Kembalikan output sesuai status penggunaan DTM
-        if self.use_dtm and dtms is not None:
-            dtm_out = dtm_aug.as_subclass(torch.Tensor).float()  # type: ignore
+        if self.use_dtm and dtm_aug is not None:
+            dtm_out = dtm_aug.as_subclass(torch.Tensor).float()
             return img_out, mask_out, dtm_out
 
         return img_out, mask_out
