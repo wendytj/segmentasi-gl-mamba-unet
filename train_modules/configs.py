@@ -56,8 +56,8 @@ CONFIG = {
     "use_class_weights": False,  # Pembobotan kelas piksel statis
     "weight_mode": "median",  # Pilihan: ['dbce', 'cdw', 'raw', 'median', 'cui_cb']
     "weight_beta": 0.9999,  # Effective Number of Samples (Cui et al., 2019)
-    "tversky_alpha": 0.3,  # Hyperparameter Tversky Loss
-    "tversky_beta": 0.7,
+    "tversky_alpha": 0.2,  # Hyperparameter Tversky Loss
+    "tversky_beta": 0.8,
     "focal_gamma": 2.0,  # Hyperparameter Focal Loss (Lin et al., 2017)
     "compound_weight_a": 1.0,  # Bobot komponen loss pertama
     "compound_weight_b": 1.0,  # Bobot komponen loss kedua
