@@ -139,7 +139,9 @@ class GPUSegmentationAugmenter(nn.Module):
     def forward(self, images, masks, dtms=None):
         # Mode Passthrough / Eval (Tanpa Augmentasi)
         if self.trial_mode in ["trial0", "identity", "eval"]:
-            mask_out = masks.squeeze(1) if masks.ndim == 4 else masks
+            mask_out = (
+                masks.squeeze(1) if masks.ndim == 4 and masks.shape[1] == 1 else masks
+            )
             if self.use_dtm and dtms is not None:
                 dtm_out = (
                     dtms.squeeze(1) if dtms.ndim == 4 and dtms.shape[1] == 1 else dtms
