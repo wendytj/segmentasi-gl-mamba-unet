@@ -19,11 +19,11 @@ echo "📂 [4/4] Preparing Dataset & Pretrained Weights..."
 mkdir -p data
 mkdir -p weights
 
-if [ ! -f "data/dataset_seg_2ch_224x224_nocrop_ratio_0_1.npz" ]; then
-    echo "Downloading dataset Turkey 1-Channel 224x224 Segmentation Without Crop Ratio 0.1!"
-    gdown 10c1E30NsSXV6WeJZ7Zs5M8MRo7hC14HH -O data/dataset_seg_2ch_224x224_nocrop_ratio_0_1.npz
+if [ ! -f "data/dataset_seg_2ch_224x224_nocrop_ratio_0_5.npz" ]; then
+    echo "Downloading dataset Turkey 1-Channel 224x224 Segmentation Without Crop Ratio 0.5!"
+    gdown 1RjgJUFsN-MD44_wNqOmmbRyHWwdjcBCJ -O data/dataset_seg_2ch_224x224_nocrop_ratio_0_5.npz
 else
-    echo "✅ Dataset Turkey 1-Channel 224x224 Segmentation Without Crop Ratio 0.1 sudah ada, melewati proses unduh."
+    echo "✅ Dataset Turkey 1-Channel 224x224 Segmentation Without Crop Ratio 0.5 sudah ada, melewati proses unduh."
 fi
 
 # 2. Download Pretrained Weights

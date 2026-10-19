@@ -11,7 +11,7 @@ CONFIG = {
     "split_config": "split_80_10_10",
     "seed": 42,
     "num_classes": 2,
-    "npz_path": "data/dataset_seg_2ch_224x224_nocrop_ratio_0_1.npz",
+    "npz_path": "data/dataset_seg_2ch_224x224_nocrop_ratio_0_5.npz",
     "pretrained_path": "weights/classification_merged_best.pth",
     "batch_size": 16,
     "eval_batch_size": 16,
