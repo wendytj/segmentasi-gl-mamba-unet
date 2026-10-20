@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================================="
-echo "🚀 Memulai [MOCK] Antrean Eksperimen Ablasi Data Scaling 1.0 - 1.5"
+echo "🚀 Memulai Antrean Eksperimen Ablasi Data Scaling 1.0 - 1.5"
 echo "$(date)"
 echo "=========================================================="
 
@@ -26,7 +26,7 @@ echo "▶️ [2/2] Menjalankan: Rasio 1.5"
 
 python train.py --experiment_code scaling_15 --npz_path data/dataset_seg_2ch_224x224_nocrop_ratio_1_5.npz
 
-echo "✅ [2/3] Selesai: $(date)"
+echo "✅ [2/2] Selesai: $(date)"
 sleep 10
 
 echo ""

@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================================="
-echo "🚀 Memulai [MOCK] Antrean Eksperimen Ablasi Data Scaling 0.2 - 0.5"
+echo "🚀 Memulai Antrean Eksperimen Ablasi Data Scaling 0.2 - 0.5"
 echo "$(date)"
 echo "=========================================================="
 
