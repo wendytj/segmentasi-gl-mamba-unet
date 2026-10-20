@@ -23,7 +23,7 @@ CONFIG = {
     # 2. Saklar Model & Fine-Tuning Stage 2
     # --------------------------------------------------------------------------
     "finetune_strategy": "peft",  # Opsi 4 strategi: 'full', 'selective', 'peft', 'frozen'
-    "encoder_lr_ratio": 0.1,  # Rasio LR untuk backbone pretrained DWT (misal 0.1x dari Effective LR)
+    "encoder_lr_ratio": 0.2,  # Rasio LR untuk backbone pretrained DWT (misal 0.1x dari Effective LR)
     "min_lesion_pixels": 10,  # Threshold piksel lesi minimum untuk klasifikasi slice 3-kelas
     # --------------------------------------------------------------------------
     # 3. Arsitektur DWT-Mamba Backbone

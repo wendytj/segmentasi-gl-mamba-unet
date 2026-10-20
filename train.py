@@ -60,8 +60,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"🚀 Memulai Eksekusi pada Perangkat: {device}")
     print(
-        f"💡 Base LR: {CONFIG['learning_rate']} | Effective LR (Batch Size"
-        f" {CONFIG['batch_size']}): {CONFIG['effective_lr']:.6f} | Encoder LR"
+        f"💡 Base LR: {CONFIG['learning_rate']} | Effective LR (Effective Batch Size"
+        f" {effective_bs}): {CONFIG['effective_lr']:.6f} | Encoder LR"
         f" Ratio: {CONFIG['encoder_lr_ratio']}x"
     )
 
