@@ -15,7 +15,7 @@ echo "✅ [1/2] Selesai: $(date)"
 sleep 10
 
 echo ""
-echo "▶️ [2/2] Menjalankan: LR Conv Ratio 0.1"
+echo "▶️ [2/2] Menjalankan: LR Conv Ratio 1.0"
 
 python train.py --experiment_code conv_10 --lr_conv_ratio 1.0
 
