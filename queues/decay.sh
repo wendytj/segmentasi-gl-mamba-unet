@@ -23,11 +23,11 @@ echo "✅ [2/3] Selesai: $(date)"
 sleep 10
 
 echo ""
-echo "▶️ [2/3] Menjalankan: Decay 1e-2"
+echo "▶️ [3/3] Menjalankan: Decay 1e-2"
 
 python train.py --experiment_code decay-1e-2 --weight_decay 1e-2
 
-echo "✅ [2/3] Selesai: $(date)"
+echo "✅ [3/3] Selesai: $(date)"
 sleep 10
 
 echo ""
